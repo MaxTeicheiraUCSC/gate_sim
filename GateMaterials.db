@@ -1,0 +1,14 @@
+[Elements]
+Cadmium:   S= Cd ; Z= 48. ; A= 112.41 g/mole
+Zinc:      S= Zn ; Z= 30. ; A= 65.38 g/mole
+Tellurium: S= Te ; Z= 52. ; A= 127.60 g/mole
+Tungsten:  S= W  ; Z= 74. ; A= 183.84 g/mole
+
+[Materials]
+CdZnTe: d=5.78 g/cm3; n=3; state=solid
+    +el: name=Cadmium; n=9
+    +el: name=Zinc; n=1
+    +el: name=Tellurium; n=10
+
+Tungsten: d=19.3 g/cm3; n=1; state=solid
+    +el: name=Tungsten; n=1

@@ -1,0 +1,29 @@
+# Autopilot pipeline configuration for gate_sim
+# This file defines the SLURM job pipeline and Claude review settings.
+
+project:
+  name: gate_sim
+
+jobs:
+  - name: simulation
+    script: submit_gate.sbatch
+    type: sbatch
+    array: "1-10"
+    depends_on: []
+    sbatch_flags: ""
+
+  - name: merge_results
+    script: merge_results.sbatch
+    type: sbatch
+    depends_on:
+      - simulation
+    sbatch_flags: ""
+
+claude:
+  enabled: true
+  auto_fix: true
+  max_fix_cycles: 3
+  review_model: sonnet
+  fix_model: opus
+  review_budget: "0.50"
+  fix_budget: "1.00"
