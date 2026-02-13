@@ -74,8 +74,8 @@ def load_data(filename):
     print(f"Loading: {filename}")
 
     with uproot.open(filename) as f:
-        # Get the first tree
-        tree_name = [k for k in f.keys() if not k.endswith(';1') or ';' not in k][0]
+        # Get the first tree (strip ROOT cycle number e.g. ";1")
+        tree_name = list(f.keys())[0].split(";")[0]
         tree = f[tree_name]
 
         print(f"Tree: {tree_name}")

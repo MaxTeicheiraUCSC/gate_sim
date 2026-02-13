@@ -179,8 +179,8 @@ def merge_dose_maps(job_dirs, merged_dir):
             print(f"  Warning: No dose file in {job_dir}")
 
     if not dose_files:
-        print("  No dose files found to merge!")
-        return False
+        print("  No dose files found — skipping dose merge (simulation may not produce dose maps)")
+        return True
 
     # Try using SimpleITK for MHD files
     try:

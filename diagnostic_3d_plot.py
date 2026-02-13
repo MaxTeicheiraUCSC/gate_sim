@@ -336,8 +336,19 @@ def plot_diagnostic_summary(data, output_dir):
 
 
 def main():
-    hits_file = '/home/mteichei/gate_sim/output/merged/hits_merged.root'
-    output_dir = '/home/mteichei/gate_sim/output/diagnostics'
+    import argparse
+    parser = argparse.ArgumentParser(description='3D diagnostic plots for CZT simulation')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parser.add_argument('--input', type=str,
+                        default=os.path.join(script_dir, 'output', 'merged', 'hits_merged.root'),
+                        help='Input merged ROOT file')
+    parser.add_argument('--output-dir', type=str,
+                        default=os.path.join(script_dir, 'output', 'diagnostics'),
+                        help='Output directory for diagnostic plots')
+    args = parser.parse_args()
+
+    hits_file = args.input
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 60)

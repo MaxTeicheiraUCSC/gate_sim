@@ -110,9 +110,9 @@ body = f'''{emoji} *Post-processing is done!* {status_line}
 4. *6-Panel Summary* — energy spectrum, hit maps, depth profile, particle breakdown
 
 :open_file_folder: *Where to find everything:*
-\`~/gate_sim/output/diagnostics/\` — 3D plots
-\`~/gate_sim/output/analysis/\` — spectral analysis
-\`~/gate_sim/output/merged/\` — merged ROOT files for further analysis
+\`~/projects/gate_sim/output/diagnostics/\` — 3D plots
+\`~/projects/gate_sim/output/analysis/\` — spectral analysis
+\`~/projects/gate_sim/output/merged/\` — merged ROOT files for further analysis
 '''
 
 payload = json.dumps({
@@ -130,6 +130,53 @@ try:
 except Exception as e:
     print(f'Slack post failed: {e}', file=sys.stderr)
 "
+
+    # ── Step 4b: Upload diagnostic images to Slack ──
+    SLACK_TOKEN="${AUTOPILOT_SLACK_TOKEN:-}"
+    SLACK_CHANNEL="${AUTOPILOT_SLACK_CHANNEL:-}"
+
+    if [[ -n "${SLACK_TOKEN}" && -n "${SLACK_CHANNEL}" ]]; then
+        echo "Step 4b: Uploading diagnostic images to Slack..."
+        for img in "${GATE_SIM_DIR}/output/diagnostics/"*.png "${GATE_SIM_DIR}/output/analysis/"*.png; do
+            [[ -f "$img" ]] || continue
+            FNAME="$(basename "$img")"
+            TITLE="$(basename "$img" .png | tr '_' ' ')"
+            FSIZE="$(stat -c%s "$img")"
+            echo "  Uploading: ${FNAME} (${FSIZE} bytes)"
+
+            # Step A: Get upload URL
+            UPLOAD_URL_RESP=$(curl -s -X POST \
+                -H "Authorization: Bearer ${SLACK_TOKEN}" \
+                -F "filename=${FNAME}" \
+                -F "length=${FSIZE}" \
+                "https://slack.com/api/files.getUploadURLExternal" 2>&1)
+            UPLOAD_URL=$(echo "$UPLOAD_URL_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('upload_url',''))" 2>/dev/null)
+            FILE_ID=$(echo "$UPLOAD_URL_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('file_id',''))" 2>/dev/null)
+
+            if [[ -z "$UPLOAD_URL" || -z "$FILE_ID" ]]; then
+                echo "    Failed to get upload URL — skipping remaining uploads"
+                break
+            fi
+
+            # Step B: Upload file content
+            curl -s -X POST -F "file=@${img}" "$UPLOAD_URL" >/dev/null 2>&1
+
+            # Step C: Complete upload and share to channel
+            COMPLETE_RESP=$(curl -s -X POST \
+                -H "Authorization: Bearer ${SLACK_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"files\":[{\"id\":\"${FILE_ID}\",\"title\":\"${TITLE}\"}],\"channel_id\":\"${SLACK_CHANNEL}\",\"initial_comment\":\":bar_chart: ${TITLE}\"}" \
+                "https://slack.com/api/files.completeUploadExternal" 2>&1)
+            if echo "$COMPLETE_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('ok') else 1)" 2>/dev/null; then
+                echo "    Uploaded successfully"
+            else
+                echo "    Upload failed: ${COMPLETE_RESP}"
+                break
+            fi
+        done
+    else
+        echo "Step 4b: Skipping image uploads (AUTOPILOT_SLACK_TOKEN or AUTOPILOT_SLACK_CHANNEL not set)"
+    fi
 fi
 
 # Exit with worst code
