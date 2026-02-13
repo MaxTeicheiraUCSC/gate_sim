@@ -5,29 +5,137 @@
 #SBATCH --mem=8G
 #SBATCH --time=01:00:00
 
-# Merge results from GATE CZT simulation array jobs
+# Merge results from GATE CZT simulation array jobs + run diagnostics
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# SLURM copies scripts to spool dir, so resolve project dir from env or home
+GATE_SIM_DIR="${GATE_SIM_DIR:-$HOME/gate_sim}"
 
 echo "============================================================"
-echo "GATE CZT Merge Results"
+echo "GATE CZT Merge Results + Diagnostics"
 echo "============================================================"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: ${SLURM_NODELIST}"
-echo "Script dir: ${SCRIPT_DIR}"
+echo "Project dir: ${GATE_SIM_DIR}"
 
 # Activate conda
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate gate_env
 
 echo "Python: $(which python)"
+
+cd "${GATE_SIM_DIR}"
 echo "Working dir: $(pwd)"
 
-cd "${SCRIPT_DIR}"
+# ── Step 1: Merge results ──
+echo ""
+echo "Step 1: Merging simulation results..."
+python "${GATE_SIM_DIR}/merge_results.py" --output-dir "${GATE_SIM_DIR}/output"
+MERGE_EXIT=$?
+echo "Merge finished with exit code: ${MERGE_EXIT}"
 
-echo "Starting merge..."
-python "${SCRIPT_DIR}/merge_results.py" --output-dir "${SCRIPT_DIR}/output"
+# ── Step 2: Run diagnostic 3D plots ──
+echo ""
+echo "Step 2: Generating diagnostic plots..."
+if [[ -f "${GATE_SIM_DIR}/diagnostic_3d_plot.py" ]]; then
+    python "${GATE_SIM_DIR}/diagnostic_3d_plot.py"
+    DIAG_EXIT=$?
+    echo "Diagnostics finished with exit code: ${DIAG_EXIT}"
+else
+    echo "Warning: diagnostic_3d_plot.py not found, skipping"
+    DIAG_EXIT=0
+fi
 
-EXIT_CODE=$?
-echo "Merge finished with exit code: ${EXIT_CODE}"
-exit ${EXIT_CODE}
+# ── Step 3: Run standard analysis ──
+echo ""
+echo "Step 3: Running standard analysis..."
+MERGED_PHSP="${GATE_SIM_DIR}/output/merged/phsp_detector_merged.root"
+if [[ -f "${GATE_SIM_DIR}/analyze_phsp.py" ]] && [[ -f "${MERGED_PHSP}" ]]; then
+    python "${GATE_SIM_DIR}/analyze_phsp.py" --input "${MERGED_PHSP}" --output-dir "${GATE_SIM_DIR}/output/analysis"
+    ANALYSIS_EXIT=$?
+    echo "Analysis finished with exit code: ${ANALYSIS_EXIT}"
+else
+    echo "Warning: analyze_phsp.py or merged phsp file not found, skipping"
+    ANALYSIS_EXIT=0
+fi
+
+# ── Step 4: Post results summary to Slack ──
+WEBHOOK="${AUTOPILOT_SLACK_WEBHOOK:-}"
+if [[ -n "${WEBHOOK}" ]]; then
+    echo ""
+    echo "Step 4: Posting results to Slack..."
+
+    # Collect diagnostic stats
+    STATS_FILE="${GATE_SIM_DIR}/output/merged/merged_statistics.txt"
+    STATS_SUMMARY=""
+    if [[ -f "${STATS_FILE}" ]]; then
+        STATS_SUMMARY="$(cat "${STATS_FILE}")"
+    fi
+
+    # Count output files
+    N_PLOTS=$(ls "${GATE_SIM_DIR}/output/diagnostics/"*.png 2>/dev/null | wc -l)
+    N_ANALYSIS=$(ls "${GATE_SIM_DIR}/output/analysis/"*.png 2>/dev/null | wc -l)
+
+    # Build Slack message
+    python3 -c "
+import json, urllib.request, sys, os, socket
+
+webhook = '${WEBHOOK}'
+stats = '''${STATS_SUMMARY}'''
+n_plots = ${N_PLOTS}
+n_analysis = ${N_ANALYSIS}
+merge_ok = ${MERGE_EXIT} == 0
+diag_ok = ${DIAG_EXIT} == 0
+analysis_ok = ${ANALYSIS_EXIT} == 0
+host = socket.gethostname()
+
+all_ok = merge_ok and diag_ok and analysis_ok
+emoji = ':tada:' if all_ok else ':warning:'
+status_line = 'Everything looks good!' if all_ok else 'Some steps had issues — check logs.'
+
+body = f'''{emoji} *Post-processing is done!* {status_line}
+
+:file_folder: *Results Merge:* {'Passed — all job outputs combined' if merge_ok else 'FAILED — check merge logs'}
+:bar_chart: *3D Diagnostics:* {'Generated {n_plots} plots' if diag_ok else 'FAILED'}
+:chart_with_upwards_trend: *Analysis:* {'Generated {n_analysis} plots (energy spectrum, hit maps, FWHM)' if analysis_ok else 'Skipped or failed'}
+
+:clipboard: *Run Statistics:*
+\`\`\`
+{stats[:1500]}
+\`\`\`
+
+:framed_picture: *Diagnostic Visualizations Created:*
+1. *3D Energy Heatmap* — photon interactions colored by energy deposit
+2. *3D Particle Map* — gammas (gold) vs secondary electrons (blue)
+3. *Full Geometry View* — source, collimator, and detector in 3D
+4. *6-Panel Summary* — energy spectrum, hit maps, depth profile, particle breakdown
+
+:open_file_folder: *Where to find everything:*
+\`~/gate_sim/output/diagnostics/\` — 3D plots
+\`~/gate_sim/output/analysis/\` — spectral analysis
+\`~/gate_sim/output/merged/\` — merged ROOT files for further analysis
+'''
+
+payload = json.dumps({
+    'blocks': [
+        {'type': 'header', 'text': {'type': 'plain_text', 'text': 'CZT Simulation — Results Ready', 'emoji': True}},
+        {'type': 'section', 'text': {'type': 'mrkdwn', 'text': body}},
+        {'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': f':microscope: autopilot post-processing | {host} | {os.popen(\"date +%H:%M:%S\").read().strip()}'}]},
+    ]
+}).encode('utf-8')
+
+req = urllib.request.Request(webhook, data=payload, headers={'Content-Type': 'application/json'})
+try:
+    urllib.request.urlopen(req, timeout=10)
+    print('Slack notification sent')
+except Exception as e:
+    print(f'Slack post failed: {e}', file=sys.stderr)
+"
+fi
+
+# Exit with worst code
+FINAL_EXIT=0
+[[ ${MERGE_EXIT} -ne 0 ]] && FINAL_EXIT=${MERGE_EXIT}
+[[ ${DIAG_EXIT} -ne 0 ]] && FINAL_EXIT=${DIAG_EXIT}
+echo ""
+echo "All steps complete. Final exit code: ${FINAL_EXIT}"
+exit ${FINAL_EXIT}

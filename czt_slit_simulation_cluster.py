@@ -50,12 +50,13 @@ def send_slack(webhook, subject, body):
     if not webhook:
         return
     escaped_body = body[:3000]
+    hostname = os.uname().nodename
     payload = json.dumps({
         "blocks": [
             {"type": "header", "text": {"type": "plain_text", "text": subject, "emoji": True}},
             {"type": "section", "text": {"type": "mrkdwn", "text": escaped_body}},
             {"type": "context", "elements": [
-                {"type": "mrkdwn", "text": f"gate_sim progress | {time.strftime('%Y-%m-%d %H:%M:%S')}"}
+                {"type": "mrkdwn", "text": f":microscope: CZT Slit Simulation | {hostname} | {time.strftime('%H:%M:%S %b %d')}"}
             ]},
         ]
     }).encode("utf-8")
@@ -99,12 +100,16 @@ def progress_monitor(progress_file, webhook, interval, job_id, primaries):
         last_pct = pct
 
         bar = make_progress_bar(pct / 100.0)
+        elapsed_fmt = f"{int(elapsed//60)}m {int(elapsed%60)}s" if elapsed >= 60 else f"{elapsed:.0f}s"
         msg = (
-            f"*Job {job_id}* — {primaries:,} primaries\n"
+            f":runner: *Simulation Job {job_id}* is crunching photons...\n\n"
             f"```{bar}```\n"
-            f"Elapsed: {elapsed:.0f}s | Rate: {rate:.0f} p/s | ETA: {eta}"
+            f":clock1: Running for *{elapsed_fmt}* | "
+            f":zap: Processing at *{rate:,.0f}* primaries/sec\n"
+            f":dart: {primaries:,} total primaries | ETA: ~{eta}\n\n"
+            f"_Cs-137 (662 keV) -> W slit collimator -> CZT detector_"
         )
-        send_slack(webhook, f"gate_sim: Job {job_id} progress", msg)
+        send_slack(webhook, f"Simulation Job {job_id} — {pct:.0f}% complete", msg)
 
 
 def run_simulation(args):
@@ -269,11 +274,16 @@ def run_simulation(args):
     # Start Slack progress monitor thread if webhook provided
     monitor_thread = None
     if args.slack_webhook:
+        node = os.environ.get("SLURM_NODELIST", "local")
+        slurm_id = os.environ.get("SLURM_JOB_ID", "N/A")
         send_slack(args.slack_webhook,
-                   f"gate_sim: Job {args.job_id} started",
-                   (f"*Job {args.job_id}* starting simulation\n"
-                    f"Primaries: {args.primaries:,} | Threads: {sim.number_of_threads}\n"
-                    f"Seed: {args.seed}"))
+                   f"Job {args.job_id} — Simulation starting",
+                   (f":rocket: *Kicking off GATE simulation job {args.job_id}*\n\n"
+                    f":radioactive_sign: *Source:* Cs-137 point source (662 keV gammas)\n"
+                    f":dart: *Primaries:* {args.primaries:,} particles to simulate\n"
+                    f":gear: *Threads:* {sim.number_of_threads} | *Seed:* {args.seed}\n"
+                    f":computer: *Node:* {node} | *SLURM Job:* {slurm_id}\n\n"
+                    f"_Geometry: 5mm CZT detector behind 0.2mm W slit collimator at 10cm_"))
         monitor_thread = threading.Thread(
             target=progress_monitor, daemon=True,
             args=(progress_file, args.slack_webhook, args.slack_interval,
@@ -355,12 +365,24 @@ def run_simulation(args):
     # Post completion to Slack
     if args.slack_webhook:
         bar = make_progress_bar(1.0)
+        elapsed_fmt = f"{int(elapsed//60)}m {int(elapsed%60)}s" if elapsed >= 60 else f"{elapsed:.1f}s"
+        rate = args.primaries / elapsed
+
+        # Count output files
+        out_files = [f for f in os.listdir(job_output_dir) if f.endswith('.root')]
+        out_size_mb = sum(os.path.getsize(os.path.join(job_output_dir, f))
+                         for f in os.listdir(job_output_dir)) / (1024*1024)
+
         send_slack(args.slack_webhook,
-                   f"gate_sim: Job {args.job_id} COMPLETE",
-                   (f"*Job {args.job_id}* finished successfully\n"
-                    f"```{bar}```\n"
-                    f"Elapsed: {elapsed:.1f}s | Rate: {args.primaries/elapsed:.0f} p/s\n"
-                    f"Primaries: {args.primaries:,} | Threads: {sim.number_of_threads}"))
+                   f"Job {args.job_id} — Done!",
+                   (f":white_check_mark: *Simulation job {args.job_id} completed successfully!*\n\n"
+                    f"```{bar}```\n\n"
+                    f":clock1: *Wall time:* {elapsed_fmt}\n"
+                    f":zap: *Throughput:* {rate:,.0f} primaries/sec\n"
+                    f":dart: *Primaries simulated:* {args.primaries:,}\n"
+                    f":package: *Output:* {len(out_files)} ROOT files ({out_size_mb:.1f} MB total)\n\n"
+                    f"_Job {args.job_id} of the array is done — "
+                    f"waiting for remaining jobs to finish before merge & analysis._"))
 
     # Write metadata
     with open(os.path.join(job_output_dir, "job_metadata.txt"), "w") as f:
