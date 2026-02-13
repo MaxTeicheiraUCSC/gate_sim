@@ -355,6 +355,11 @@ def main():
     print("3D Diagnostic Analysis — CZT Photon Interactions")
     print("=" * 60)
 
+    if not os.path.isfile(hits_file):
+        print(f"Input file not found: {hits_file}")
+        print("Skipping diagnostics (simulation may not produce hits data)")
+        sys.exit(0)
+
     data = load_hits(hits_file)
     n_hits = len(data['TotalEnergyDeposit'])
     n_nonzero = (data['TotalEnergyDeposit'] > 0).sum()
