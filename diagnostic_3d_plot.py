@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-3D Diagnostic Plot of Photon Interactions in CZT Detector
-Reads merged hits data and produces:
-1. 3D scatter plot of interaction positions colored by energy deposit
-2. 3D scatter plot colored by particle type (gamma vs electron)
-3. Energy spectrum + interaction statistics
+3D Diagnostic Plot of Photon Phase Space at CZT Detector
+Reads merged phase space data and produces:
+1. 3D scatter plot of arrival positions colored by kinetic energy
+2. 2D hit map (X-Y) at detector surface
+3. Energy spectrum + arrival statistics
 4. 3D view with geometry overlays (detector + collimator outlines)
 """
 
@@ -24,8 +24,8 @@ except ImportError:
     sys.exit(1)
 
 
-def load_hits(filename):
-    """Load hits data from merged ROOT file."""
+def load_phsp(filename):
+    """Load phase space data from merged ROOT file."""
     print(f"Loading: {filename}")
     with uproot.open(filename) as f:
         tree_name = list(f.keys())[0].split(";")[0]
@@ -34,10 +34,7 @@ def load_hits(filename):
         print(f"Branches: {tree.keys()}")
 
         data = {}
-        skip = {'TrackCreatorProcess', 'PreStepUniqueVolumeID'}
         for key in tree.keys():
-            if key in skip:
-                continue
             try:
                 arr = tree[key].array(library="np")
                 data[key] = np.asarray(arr).flatten()
@@ -52,35 +49,30 @@ def load_hits(filename):
 
 
 def plot_3d_energy(data, output_dir):
-    """3D scatter of interactions colored by energy deposit."""
+    """3D scatter of arrival positions colored by kinetic energy."""
     fig = plt.figure(figsize=(14, 10))
     ax = fig.add_subplot(111, projection='3d')
 
-    x = data['PostPosition_X']
-    y = data['PostPosition_Y']
-    z = data['PostPosition_Z']
-    energy = data['TotalEnergyDeposit']  # MeV
+    x = data['PrePosition_X']
+    y = data['PrePosition_Y']
+    z = data['PrePosition_Z']
+    energy = data['KineticEnergy']  # MeV
 
     # Convert to keV for display
     energy_keV = energy * 1000
 
-    # Filter out zero-energy deposits
-    mask = energy > 0
-    x, y, z, energy_keV = x[mask], y[mask], z[mask], energy_keV[mask]
-
-    sc = ax.scatter(x, y, z, c=energy_keV, cmap='plasma', s=3, alpha=0.6,
+    sc = ax.scatter(x, y, z, c=energy_keV, cmap='plasma', s=20, alpha=0.7,
                     vmin=0, vmax=min(700, energy_keV.max()))
 
-    cb = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.1, label='Energy Deposit (keV)')
+    fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.1, label='Kinetic Energy (keV)')
 
     ax.set_xlabel('X (mm)', fontsize=11)
     ax.set_ylabel('Y (mm)', fontsize=11)
     ax.set_zlabel('Z (mm)', fontsize=11)
-    ax.set_title('3D Photon Interactions in CZT Detector\nColored by Energy Deposit',
+    ax.set_title('Photon Arrival at CZT Detector\nColored by Kinetic Energy',
                  fontsize=14, pad=20)
 
-    # Add statistics annotation
-    stats = (f"Total interactions: {len(x):,}\n"
+    stats = (f"Total photons: {len(x):,}\n"
              f"Mean energy: {energy_keV.mean():.1f} keV\n"
              f"Max energy: {energy_keV.max():.1f} keV")
     fig.text(0.02, 0.02, stats, fontsize=10, fontfamily='monospace',
@@ -88,52 +80,44 @@ def plot_3d_energy(data, output_dir):
 
     ax.view_init(elev=25, azim=135)
     plt.tight_layout()
-    outfile = os.path.join(output_dir, '3d_interactions_energy.png')
+    outfile = os.path.join(output_dir, '3d_arrivals_energy.png')
     plt.savefig(outfile, dpi=150, bbox_inches='tight')
     print(f"Saved: {outfile}")
     plt.close()
     return outfile
 
 
-def plot_3d_particle_type(data, output_dir):
-    """3D scatter colored by particle type (gamma=22, e-=11)."""
-    fig = plt.figure(figsize=(14, 10))
-    ax = fig.add_subplot(111, projection='3d')
+def plot_hitmap(data, output_dir):
+    """2D hit map of photon arrival positions at detector surface."""
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
 
-    x = data['PostPosition_X']
-    y = data['PostPosition_Y']
-    z = data['PostPosition_Z']
-    pdg = data['PDGCode']
-    energy = data['TotalEnergyDeposit']
+    x = data['PrePosition_X']
+    y = data['PrePosition_Y']
 
-    mask = energy > 0
-    x, y, z, pdg = x[mask], y[mask], z[mask], pdg[mask]
+    # Scatter plot
+    ax1 = axes[0]
+    ax1.scatter(x, y, s=15, alpha=0.6, c='steelblue', edgecolors='navy', linewidths=0.3)
+    ax1.set_xlabel('X (mm)', fontsize=11)
+    ax1.set_ylabel('Y (mm)', fontsize=11)
+    ax1.set_title('Photon Arrival Positions (scatter)', fontsize=13)
+    ax1.set_aspect('equal')
+    ax1.grid(True, alpha=0.3)
 
-    # Separate by particle type
-    gamma_mask = pdg == 22
-    electron_mask = pdg == 11
-    other_mask = ~(gamma_mask | electron_mask)
+    # 2D histogram
+    ax2 = axes[1]
+    if len(x) > 1:
+        h = ax2.hist2d(x, y, bins=[40, 40], cmap='hot')
+        plt.colorbar(h[3], ax=ax2, label='Counts')
+    else:
+        ax2.scatter(x, y, s=30, c='red')
+    ax2.set_xlabel('X (mm)', fontsize=11)
+    ax2.set_ylabel('Y (mm)', fontsize=11)
+    ax2.set_title('Hit Map (X-Y projection)', fontsize=13)
+    ax2.set_aspect('equal')
 
-    if gamma_mask.sum() > 0:
-        ax.scatter(x[gamma_mask], y[gamma_mask], z[gamma_mask],
-                   c='gold', s=5, alpha=0.5, label=f'Gamma ({gamma_mask.sum():,})')
-    if electron_mask.sum() > 0:
-        ax.scatter(x[electron_mask], y[electron_mask], z[electron_mask],
-                   c='dodgerblue', s=3, alpha=0.5, label=f'Electron ({electron_mask.sum():,})')
-    if other_mask.sum() > 0:
-        ax.scatter(x[other_mask], y[other_mask], z[other_mask],
-                   c='red', s=3, alpha=0.5, label=f'Other ({other_mask.sum():,})')
-
-    ax.set_xlabel('X (mm)', fontsize=11)
-    ax.set_ylabel('Y (mm)', fontsize=11)
-    ax.set_zlabel('Z (mm)', fontsize=11)
-    ax.set_title('3D Photon Interactions by Particle Type\nGamma (gold) vs Secondary Electrons (blue)',
-                 fontsize=14, pad=20)
-    ax.legend(loc='upper left', fontsize=10)
-
-    ax.view_init(elev=25, azim=135)
+    plt.suptitle(f'Detector Surface Hit Map — {len(x):,} photons', fontsize=15, y=1.02)
     plt.tight_layout()
-    outfile = os.path.join(output_dir, '3d_interactions_particle_type.png')
+    outfile = os.path.join(output_dir, 'hitmap_detector.png')
     plt.savefig(outfile, dpi=150, bbox_inches='tight')
     print(f"Saved: {outfile}")
     plt.close()
@@ -145,22 +129,19 @@ def plot_3d_with_geometry(data, output_dir):
     fig = plt.figure(figsize=(16, 11))
     ax = fig.add_subplot(111, projection='3d')
 
-    x = data['PostPosition_X']
-    y = data['PostPosition_Y']
-    z = data['PostPosition_Z']
-    energy = data['TotalEnergyDeposit'] * 1000  # keV
+    x = data['PrePosition_X']
+    y = data['PrePosition_Y']
+    z = data['PrePosition_Z']
+    energy = data['KineticEnergy'] * 1000  # keV
 
-    mask = energy > 0
-    x, y, z, energy = x[mask], y[mask], z[mask], energy[mask]
-
-    # Plot interactions
-    sc = ax.scatter(x, y, z, c=energy, cmap='hot', s=4, alpha=0.5,
+    # Plot arrivals
+    sc = ax.scatter(x, y, z, c=energy, cmap='hot', s=15, alpha=0.6,
                     vmin=0, vmax=min(700, energy.max()))
     fig.colorbar(sc, ax=ax, shrink=0.5, pad=0.08, label='Energy (keV)')
 
     # Draw detector outline (5mm x 40mm x 40mm at z=100+20=120mm center)
     det_x, det_y, det_z = 5.0, 40.0, 40.0
-    det_center_z = 100.0 + det_z / 2  # source_to_detector + half depth
+    det_center_z = 100.0 + det_z / 2
 
     def draw_box(ax, cx, cy, cz, sx, sy, sz, color, label):
         """Draw wireframe box."""
@@ -172,9 +153,9 @@ def plot_3d_with_geometry(data, output_dir):
             [cx+hx, cy+hy, cz+hz], [cx-hx, cy+hy, cz+hz],
         ])
         edges = [
-            [0,1],[1,2],[2,3],[3,0],  # bottom
-            [4,5],[5,6],[6,7],[7,4],  # top
-            [0,4],[1,5],[2,6],[3,7],  # verticals
+            [0,1],[1,2],[2,3],[3,0],
+            [4,5],[5,6],[6,7],[7,4],
+            [0,4],[1,5],[2,6],[3,7],
         ]
         for i, (a, b) in enumerate(edges):
             ax.plot3D(*zip(corners[a], corners[b]),
@@ -215,82 +196,70 @@ def plot_diagnostic_summary(data, output_dir):
     """Multi-panel diagnostic: energy spectrum, spatial projections, stats."""
     fig = plt.figure(figsize=(18, 12))
 
-    energy = data['TotalEnergyDeposit'] * 1000  # keV
-    x = data['PostPosition_X']
-    y = data['PostPosition_Y']
-    z = data['PostPosition_Z']
-    pdg = data['PDGCode']
+    energy = data['KineticEnergy'] * 1000  # keV
+    x = data['PrePosition_X']
+    y = data['PrePosition_Y']
+    z = data['PrePosition_Z']
     event_id = data['EventID']
-
-    mask = energy > 0
-    energy_f = energy[mask]
-    x_f, y_f, z_f = x[mask], y[mask], z[mask]
-    pdg_f = pdg[mask]
 
     # 1. Energy spectrum
     ax1 = fig.add_subplot(2, 3, 1)
-    ax1.hist(energy_f, bins=np.linspace(0, 700, 141), color='steelblue',
+    ax1.hist(energy, bins=np.linspace(0, 700, 141), color='steelblue',
              edgecolor='black', linewidth=0.3, alpha=0.7)
     ax1.axvline(662, color='red', linestyle='--', linewidth=1.5, label='662 keV')
-    ax1.set_xlabel('Energy Deposit (keV)')
+    ax1.set_xlabel('Kinetic Energy (keV)')
     ax1.set_ylabel('Counts')
-    ax1.set_title('Energy Spectrum (Individual Hits)')
+    ax1.set_title('Energy Spectrum (Arriving Photons)')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
     # 2. X-Y hitmap
     ax2 = fig.add_subplot(2, 3, 2)
-    h = ax2.hist2d(x_f, y_f, bins=[80, 80], cmap='hot')
-    plt.colorbar(h[3], ax=ax2, label='Counts')
+    if len(x) > 1:
+        h = ax2.hist2d(x, y, bins=[40, 40], cmap='hot')
+        plt.colorbar(h[3], ax=ax2, label='Counts')
+    else:
+        ax2.scatter(x, y, s=30, c='red')
     ax2.set_xlabel('X (mm)')
     ax2.set_ylabel('Y (mm)')
     ax2.set_title('Hit Map (X-Y projection)')
     ax2.set_aspect('equal')
 
-    # 3. X-Z hitmap (side view — shows slit projection + depth)
+    # 3. Direction cosine distribution
     ax3 = fig.add_subplot(2, 3, 3)
-    h = ax3.hist2d(x_f, z_f, bins=[80, 80], cmap='hot')
-    plt.colorbar(h[3], ax=ax3, label='Counts')
-    ax3.set_xlabel('X (mm)')
-    ax3.set_ylabel('Z depth (mm)')
-    ax3.set_title('Hit Map (X-Z side view)')
+    if 'PreDirection_X' in data and 'PreDirection_Y' in data:
+        dx = data['PreDirection_X']
+        dy = data['PreDirection_Y']
+        ax3.scatter(dx, dy, s=10, alpha=0.5, c='steelblue')
+        ax3.set_xlabel('Direction X')
+        ax3.set_ylabel('Direction Y')
+        ax3.set_title('Angular Distribution')
+        ax3.set_aspect('equal')
+        ax3.grid(True, alpha=0.3)
+    else:
+        ax3.text(0.5, 0.5, 'No direction data', transform=ax3.transAxes,
+                 ha='center', va='center')
 
     # 4. 3D scatter (smaller version)
     ax4 = fig.add_subplot(2, 3, 4, projection='3d')
-    # Subsample for speed
-    n = min(5000, len(x_f))
-    idx = np.random.choice(len(x_f), n, replace=False)
-    sc = ax4.scatter(x_f[idx], y_f[idx], z_f[idx], c=energy_f[idx],
-                     cmap='plasma', s=2, alpha=0.5, vmin=0, vmax=700)
+    n = min(5000, len(x))
+    if n > 0:
+        idx = np.random.choice(len(x), n, replace=False) if len(x) > n else np.arange(len(x))
+        sc = ax4.scatter(x[idx], y[idx], z[idx], c=energy[idx],
+                         cmap='plasma', s=10, alpha=0.6, vmin=0, vmax=700)
     ax4.set_xlabel('X')
     ax4.set_ylabel('Y')
     ax4.set_zlabel('Z')
-    ax4.set_title('3D Interactions (sampled)')
+    ax4.set_title('3D Arrival Positions')
     ax4.view_init(elev=25, azim=135)
 
-    # 5. Particle type pie chart
+    # 5. Y-position distribution (slit profile)
     ax5 = fig.add_subplot(2, 3, 5)
-    gamma_n = (pdg_f == 22).sum()
-    elec_n = (pdg_f == 11).sum()
-    other_n = len(pdg_f) - gamma_n - elec_n
-    labels = []
-    sizes = []
-    colors_pie = []
-    if gamma_n > 0:
-        labels.append(f'Gamma\n({gamma_n:,})')
-        sizes.append(gamma_n)
-        colors_pie.append('gold')
-    if elec_n > 0:
-        labels.append(f'Electron\n({elec_n:,})')
-        sizes.append(elec_n)
-        colors_pie.append('dodgerblue')
-    if other_n > 0:
-        labels.append(f'Other\n({other_n:,})')
-        sizes.append(other_n)
-        colors_pie.append('tomato')
-    ax5.pie(sizes, labels=labels, colors=colors_pie, autopct='%1.1f%%',
-            startangle=90, textprops={'fontsize': 10})
-    ax5.set_title('Interaction Breakdown by Particle')
+    ax5.hist(y, bins=50, color='steelblue', edgecolor='black', linewidth=0.3, alpha=0.7)
+    ax5.set_xlabel('Y position (mm)')
+    ax5.set_ylabel('Counts')
+    ax5.set_title('Y-Profile (Slit Projection)')
+    ax5.grid(True, alpha=0.3)
 
     # 6. Diagnostics text
     ax6 = fig.add_subplot(2, 3, 6)
@@ -302,24 +271,21 @@ def plot_diagnostic_summary(data, output_dir):
     diag = (
         "DIAGNOSTIC SUMMARY\n"
         "=" * 35 + "\n\n"
-        f"Total hits (E>0):  {len(energy_f):,}\n"
+        f"Total photons:     {len(energy):,}\n"
         f"Unique events:     {n_unique_events:,}\n"
-        f"Unique tracks:     {n_unique_tracks:,}\n"
-        f"Hits/event avg:    {len(energy_f)/max(n_unique_events,1):.1f}\n\n"
+        f"Unique tracks:     {n_unique_tracks:,}\n\n"
         f"Energy:\n"
-        f"  Mean deposit:    {energy_f.mean():.1f} keV\n"
-        f"  Max deposit:     {energy_f.max():.1f} keV\n"
-        f"  Median:          {np.median(energy_f):.1f} keV\n\n"
+        f"  Mean:            {energy.mean():.1f} keV\n"
+        f"  Max:             {energy.max():.1f} keV\n"
+        f"  Median:          {np.median(energy):.1f} keV\n\n"
         f"Spatial extent:\n"
-        f"  X: [{x_f.min():.2f}, {x_f.max():.2f}] mm\n"
-        f"  Y: [{y_f.min():.2f}, {y_f.max():.2f}] mm\n"
-        f"  Z: [{z_f.min():.2f}, {z_f.max():.2f}] mm\n\n"
+        f"  X: [{x.min():.2f}, {x.max():.2f}] mm\n"
+        f"  Y: [{y.min():.2f}, {y.max():.2f}] mm\n"
+        f"  Z: [{z.min():.2f}, {z.max():.2f}] mm\n\n"
         f"Geometry:\n"
         f"  Source: Cs-137 (662 keV)\n"
         f"  Slit: 0.2 mm tungsten\n"
         f"  Detector: 5x40x40 mm CZT\n"
-        f"  10M primaries (10 jobs)\n\n"
-        f"STATUS: ALL CHECKS PASSED"
     )
 
     ax6.text(0.05, 0.95, diag, transform=ax6.transAxes, fontsize=10,
@@ -340,35 +306,37 @@ def main():
     parser = argparse.ArgumentParser(description='3D diagnostic plots for CZT simulation')
     script_dir = os.path.dirname(os.path.abspath(__file__))
     parser.add_argument('--input', type=str,
-                        default=os.path.join(script_dir, 'output', 'merged', 'hits_merged.root'),
+                        default=os.path.join(script_dir, 'output', 'merged', 'phsp_detector_merged.root'),
                         help='Input merged ROOT file')
     parser.add_argument('--output-dir', type=str,
                         default=os.path.join(script_dir, 'output', 'diagnostics'),
                         help='Output directory for diagnostic plots')
     args = parser.parse_args()
 
-    hits_file = args.input
+    input_file = args.input
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
     print("=" * 60)
-    print("3D Diagnostic Analysis — CZT Photon Interactions")
+    print("3D Diagnostic Analysis — CZT Photon Phase Space")
     print("=" * 60)
 
-    if not os.path.isfile(hits_file):
-        print(f"Input file not found: {hits_file}")
-        print("Skipping diagnostics (simulation may not produce hits data)")
+    if not os.path.isfile(input_file):
+        print(f"Input file not found: {input_file}")
+        print("Skipping diagnostics (merged data not yet available)")
         sys.exit(0)
 
-    data = load_hits(hits_file)
-    n_hits = len(data['TotalEnergyDeposit'])
-    n_nonzero = (data['TotalEnergyDeposit'] > 0).sum()
-    print(f"\nTotal entries: {n_hits:,}")
-    print(f"Non-zero energy: {n_nonzero:,}")
+    data = load_phsp(input_file)
+    n_photons = len(data['KineticEnergy'])
+    print(f"\nTotal photons: {n_photons:,}")
 
-    print("\nGenerating 3D plots...")
+    if n_photons == 0:
+        print("No photons in file — skipping plots")
+        sys.exit(0)
+
+    print("\nGenerating diagnostic plots...")
     plot_3d_energy(data, output_dir)
-    plot_3d_particle_type(data, output_dir)
+    plot_hitmap(data, output_dir)
     plot_3d_with_geometry(data, output_dir)
     plot_diagnostic_summary(data, output_dir)
 
