@@ -34,11 +34,18 @@ conda activate gate_env
 echo "Python: $(which python)"
 echo "Working dir: $(pwd)"
 
+# Build Slack flags if webhook is available
+SLACK_FLAGS=""
+if [[ -n "${AUTOPILOT_SLACK_WEBHOOK:-}" ]]; then
+    SLACK_FLAGS="--slack-webhook ${AUTOPILOT_SLACK_WEBHOOK} --slack-interval 30"
+fi
+
 echo "Starting simulation..."
 python ${GATE_SIM_DIR}/czt_slit_simulation_cluster.py \
     --seed ${SLURM_ARRAY_TASK_ID} \
     --primaries ${PRIMARIES_PER_JOB} \
-    --job-id ${SLURM_ARRAY_TASK_ID}
+    --job-id ${SLURM_ARRAY_TASK_ID} \
+    ${SLACK_FLAGS}
 
 EXIT_CODE=$?
 echo "Job ${SLURM_ARRAY_TASK_ID} finished with exit code: ${EXIT_CODE}"

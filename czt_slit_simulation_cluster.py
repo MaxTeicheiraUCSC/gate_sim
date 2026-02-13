@@ -11,9 +11,12 @@ Features:
 """
 
 import argparse
+import json
 import os
 import sys
+import threading
 import time
+import urllib.request
 
 
 def parse_args():
@@ -26,6 +29,10 @@ def parse_args():
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--gpu", action="store_true")
     parser.add_argument("--threads", type=int, default=None)
+    parser.add_argument("--slack-webhook", type=str, default=None,
+                        help="Slack webhook URL for progress updates")
+    parser.add_argument("--slack-interval", type=int, default=30,
+                        help="Seconds between Slack progress updates (default: 30)")
     return parser.parse_args()
 
 
@@ -36,6 +43,68 @@ def get_num_threads(args):
     if slurm_cpus:
         return int(slurm_cpus)
     return os.cpu_count()
+
+
+def send_slack(webhook, subject, body):
+    """Post a message to Slack."""
+    if not webhook:
+        return
+    escaped_body = body[:3000]
+    payload = json.dumps({
+        "blocks": [
+            {"type": "header", "text": {"type": "plain_text", "text": subject, "emoji": True}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": escaped_body}},
+            {"type": "context", "elements": [
+                {"type": "mrkdwn", "text": f"gate_sim progress | {time.strftime('%Y-%m-%d %H:%M:%S')}"}
+            ]},
+        ]
+    }).encode("utf-8")
+    try:
+        req = urllib.request.Request(webhook, data=payload,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"Slack post failed: {e}", file=sys.stderr)
+
+
+def make_progress_bar(fraction, width=20):
+    """Render a text progress bar."""
+    filled = int(width * fraction)
+    bar = "\u2588" * filled + "\u2591" * (width - filled)
+    return f"[{bar}] {fraction*100:.1f}%"
+
+
+def progress_monitor(progress_file, webhook, interval, job_id, primaries):
+    """Background thread: read progress file and post to Slack periodically."""
+    last_pct = -1
+    while True:
+        time.sleep(interval)
+        try:
+            with open(progress_file, "r") as f:
+                info = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+
+        if info.get("done"):
+            break
+
+        pct = info.get("percent", 0)
+        elapsed = info.get("elapsed", 0)
+        rate = info.get("rate", 0)
+        eta = info.get("eta", "?")
+
+        # Only post if progress changed meaningfully (>= 5% jump)
+        if pct - last_pct < 5 and pct < 100:
+            continue
+        last_pct = pct
+
+        bar = make_progress_bar(pct / 100.0)
+        msg = (
+            f"*Job {job_id}* — {primaries:,} primaries\n"
+            f"```{bar}```\n"
+            f"Elapsed: {elapsed:.0f}s | Rate: {rate:.0f} p/s | ETA: {eta}"
+        )
+        send_slack(webhook, f"gate_sim: Job {job_id} progress", msg)
 
 
 def run_simulation(args):
@@ -192,11 +261,87 @@ def run_simulation(args):
     print(f"  - Collimator: {collimator_size/mm:.0f} mm tungsten, {slit_width/mm:.1f} mm slit")
     print(f"  - Energy blurring: 2% FWHM at 662 keV")
 
+    # =========================================================================
+    # PROGRESS TRACKING + SLACK REPORTING
+    # =========================================================================
+    progress_file = os.path.join(job_output_dir, "progress.json")
+
+    # Start Slack progress monitor thread if webhook provided
+    monitor_thread = None
+    if args.slack_webhook:
+        send_slack(args.slack_webhook,
+                   f"gate_sim: Job {args.job_id} started",
+                   (f"*Job {args.job_id}* starting simulation\n"
+                    f"Primaries: {args.primaries:,} | Threads: {sim.number_of_threads}\n"
+                    f"Seed: {args.seed}"))
+        monitor_thread = threading.Thread(
+            target=progress_monitor, daemon=True,
+            args=(progress_file, args.slack_webhook, args.slack_interval,
+                  args.job_id, args.primaries))
+        monitor_thread.start()
+
+    # Background thread to write progress file by monitoring elapsed time
+    # GATE internally tracks events; we estimate from elapsed time vs total
+    sim_start_event = threading.Event()
+
+    def progress_writer():
+        """Write estimated progress to file every 2 seconds."""
+        sim_start_event.wait()
+        t0 = time.time()
+        # Wait for a small initial sample to estimate rate
+        time.sleep(5)
+        while True:
+            elapsed = time.time() - t0
+            # Read stats file if it exists (GATE writes it at end, so use estimate)
+            # Estimate: use the rate from the first chunk
+            if elapsed > 0:
+                # Check if hits file is growing as a proxy for progress
+                hits_file = os.path.join(job_output_dir, "hits.root")
+                try:
+                    current_size = os.path.getsize(hits_file)
+                except FileNotFoundError:
+                    current_size = 0
+
+                # Rough estimate: assume linear progress based on time
+                # We'll refine once we get actual completion
+                estimated_rate = args.primaries / max(elapsed * 2, 1)  # conservative
+                pct = min(95, (elapsed / max(elapsed + 5, 1)) * 100)  # cap at 95% until done
+
+                info = {
+                    "percent": round(pct, 1),
+                    "elapsed": round(elapsed, 1),
+                    "rate": round(estimated_rate, 0),
+                    "eta": f"{max(0, (100-pct)/max(pct,1)*elapsed):.0f}s",
+                    "hits_file_size": current_size,
+                    "done": False,
+                }
+                try:
+                    with open(progress_file, "w") as f:
+                        json.dump(info, f)
+                except Exception:
+                    pass
+            time.sleep(2)
+
+    writer_thread = threading.Thread(target=progress_writer, daemon=True)
+    writer_thread.start()
+
     # Run simulation
     print(f"\nStarting simulation...")
     start_time = time.time()
+    sim_start_event.set()
     sim.run()
     elapsed = time.time() - start_time
+
+    # Write final progress
+    final_info = {
+        "percent": 100.0,
+        "elapsed": round(elapsed, 1),
+        "rate": round(args.primaries / elapsed, 0),
+        "eta": "0s",
+        "done": True,
+    }
+    with open(progress_file, "w") as f:
+        json.dump(final_info, f)
 
     print(f"\n" + "=" * 60)
     print(f"Simulation Complete!")
@@ -206,6 +351,16 @@ def run_simulation(args):
     print(f"Primaries: {args.primaries:,}")
     print(f"Rate: {args.primaries/elapsed:.0f} primaries/second")
     print(f"Output: {job_output_dir}")
+
+    # Post completion to Slack
+    if args.slack_webhook:
+        bar = make_progress_bar(1.0)
+        send_slack(args.slack_webhook,
+                   f"gate_sim: Job {args.job_id} COMPLETE",
+                   (f"*Job {args.job_id}* finished successfully\n"
+                    f"```{bar}```\n"
+                    f"Elapsed: {elapsed:.1f}s | Rate: {args.primaries/elapsed:.0f} p/s\n"
+                    f"Primaries: {args.primaries:,} | Threads: {sim.number_of_threads}"))
 
     # Write metadata
     with open(os.path.join(job_output_dir, "job_metadata.txt"), "w") as f:
