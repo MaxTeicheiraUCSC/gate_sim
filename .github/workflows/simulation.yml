@@ -148,9 +148,7 @@ jobs:
 
       - name: Publish results to GitHub Pages
         run: |
-          # git is provided via module on this cluster
-          source /etc/profile.d/lmod.sh 2>/dev/null || true
-          module load git 2>/dev/null || true
+          GIT=/mnt/beegfs/cluster/software/apps/git/gnu13-2.52.0/bin/git
 
           mkdir -p docs/results
           cp output/analysis/*.png docs/results/ 2>/dev/null || true
@@ -161,7 +159,6 @@ jobs:
           echo "Copied ${COPIED} plots to docs/results/"
 
           if [ "${COPIED}" -gt 0 ]; then
-            GIT=$(which git || echo /usr/bin/git)
             $GIT config user.name "github-actions[bot]"
             $GIT config user.email "github-actions[bot]@users.noreply.github.com"
             $GIT add docs/results/
