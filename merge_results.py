@@ -300,24 +300,38 @@ def aggregate_statistics(job_dirs, merged_dir):
         stats_file = os.path.join(job_dir, "simulation_stats.txt")
         metadata_file = os.path.join(job_dir, "job_metadata.txt")
 
+        job_primaries_found = False
         if os.path.exists(stats_file):
             print(f"  Reading: {stats_file}")
             with open(stats_file, 'r') as f:
                 content = f.read()
-                # Parse GATE stats format (varies by version)
-                for line in content.split('\n'):
-                    if 'NumberOfEvents' in line or 'primaries' in line.lower():
-                        try:
-                            num = int(re.search(r'(\d+)', line).group(1))
-                            total_primaries += num
-                        except:
-                            pass
-                    if 'Tracks' in line:
-                        try:
-                            num = int(re.search(r'(\d+)', line).group(1))
-                            total_tracks += num
-                        except:
-                            pass
+
+                # Try JSON format first (GATE 10 / opengate)
+                try:
+                    import json
+                    stats_json = json.loads(content)
+                    if 'events' in stats_json:
+                        num = int(stats_json['events']['value'])
+                        total_primaries += num
+                        job_primaries_found = True
+                    if 'tracks' in stats_json:
+                        total_tracks += int(stats_json['tracks']['value'])
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    # Fallback: parse GATE text stats format
+                    for line in content.split('\n'):
+                        if 'NumberOfEvents' in line or 'primaries' in line.lower():
+                            try:
+                                num = int(re.search(r'(\d+)', line).group(1))
+                                total_primaries += num
+                                job_primaries_found = True
+                            except:
+                                pass
+                        if 'Tracks' in line:
+                            try:
+                                num = int(re.search(r'(\d+)', line).group(1))
+                                total_tracks += num
+                            except:
+                                pass
             job_count += 1
 
         if os.path.exists(metadata_file):
@@ -328,11 +342,10 @@ def aggregate_statistics(job_dirs, merged_dir):
                             total_time += float(line.split('=')[1])
                         except:
                             pass
-                    if line.startswith('primaries='):
+                    if line.startswith('primaries=') and not job_primaries_found:
                         try:
-                            # Use metadata primaries if stats parsing failed
-                            if total_primaries == 0:
-                                total_primaries += int(line.split('=')[1])
+                            total_primaries += int(line.split('=')[1])
+                            job_primaries_found = True
                         except:
                             pass
 

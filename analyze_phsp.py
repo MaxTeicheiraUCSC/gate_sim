@@ -84,9 +84,15 @@ def load_data(filename):
         data = {}
         for key in tree.keys():
             try:
-                data[key] = tree[key].array(library="np")
-            except:
-                pass
+                arr = tree[key].array(library="np")
+                data[key] = np.asarray(arr).flatten()
+            except Exception:
+                try:
+                    import awkward as ak
+                    arr = tree[key].array()
+                    data[key] = ak.to_numpy(arr).flatten()
+                except Exception:
+                    print(f"  Skipping branch: {key}")
 
         return data
 
