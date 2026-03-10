@@ -33,7 +33,6 @@ jobs:
         run: |
           NUM_JOBS=${{ github.event.inputs.num_jobs || '4' }}
           PRIMARIES=${{ github.event.inputs.primaries || '100000' }}
-          # Build JSON array [1, 2, ..., NUM_JOBS]
           MATRIX=$(python3 -c "import json; print(json.dumps(list(range(1, int('${NUM_JOBS}') + 1))))")
           echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
           echo "num_jobs=${NUM_JOBS}" >> $GITHUB_OUTPUT
@@ -77,7 +76,6 @@ jobs:
         run: |
           JOB_DIR="output/job_$(printf '%04d' ${{ matrix.job_id }})"
 
-          # Post metadata to job summary
           if [ -f "${JOB_DIR}/job_metadata.txt" ]; then
             echo "### Results" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -92,7 +90,6 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Show output file sizes
           if [ -d "${JOB_DIR}" ]; then
             echo "### Output Files" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -134,7 +131,6 @@ jobs:
 
           python merge_results.py --output-dir ./output
 
-          # Post merged stats
           if [ -f "output/merged/merged_statistics.txt" ]; then
             echo "### Merged Statistics" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -142,14 +138,33 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Run analysis
+      - name: Upload merged data
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-data
+          path: output/merged/
+          retention-days: 30
+
+  analysis:
+    runs-on: self-hosted
+    needs: merge
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download merged data
+        uses: actions/download-artifact@v4
+        with:
+          name: merged-data
+          path: output/merged
+
+      - name: Run spectral analysis
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate gate_env
 
           python analyze_phsp.py --input output/merged/phsp_detector_merged.root --output-dir output/analysis
 
-          # Embed plots in the job summary
           echo "### Analysis Plots" >> $GITHUB_STEP_SUMMARY
           for png in output/analysis/*.png; do
             if [ -f "$png" ]; then
@@ -159,12 +174,69 @@ jobs:
             fi
           done
 
+      - name: Upload analysis plots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis-plots
+          path: output/analysis/
+          retention-days: 30
+
+  diagnostics:
+    runs-on: self-hosted
+    needs: merge
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download merged data
+        uses: actions/download-artifact@v4
+        with:
+          name: merged-data
+          path: output/merged
+
       - name: Run 3D diagnostics
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate gate_env
 
           python diagnostic_3d_plot.py
+
+      - name: Upload diagnostic plots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostic-plots
+          path: output/diagnostics/
+          retention-days: 30
+
+  publish:
+    runs-on: self-hosted
+    needs: [analysis, diagnostics]
+    if: always() && (needs.analysis.result == 'success' || needs.diagnostics.result == 'success')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download analysis plots
+        uses: actions/download-artifact@v4
+        if: needs.analysis.result == 'success'
+        with:
+          name: analysis-plots
+          path: output/analysis
+
+      - name: Download diagnostic plots
+        uses: actions/download-artifact@v4
+        if: needs.diagnostics.result == 'success'
+        with:
+          name: diagnostic-plots
+          path: output/diagnostics
+
+      - name: Download merged statistics
+        uses: actions/download-artifact@v4
+        with:
+          name: merged-data
+          path: output/merged
 
       - name: Publish results to GitHub Pages
         run: |
@@ -186,14 +258,3 @@ jobs:
             git commit -m "Update simulation results ($(date +%Y-%m-%d), ${COPIED} plots)" || echo "No changes to commit"
             git push
           fi
-
-      - name: Upload merged results and plots
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: merged-results
-          path: |
-            output/merged/
-            output/analysis/
-            output/diagnostics/
-          retention-days: 30
