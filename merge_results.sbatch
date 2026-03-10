@@ -29,7 +29,7 @@ echo "Working dir: $(pwd)"
 # ── Step 1: Merge results ──
 echo ""
 echo "Step 1: Merging simulation results..."
-python "${GATE_SIM_DIR}/merge_results.py" --output-dir "${GATE_SIM_DIR}/output"
+python "${GATE_SIM_DIR}/merge_results.py" --output-dir "${GATE_SIM_DIR}/output" --skip-dose
 MERGE_EXIT=$?
 echo "Merge finished with exit code: ${MERGE_EXIT}"
 

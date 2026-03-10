@@ -122,7 +122,7 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Run diagnostics and generate plots
+      - name: Run analysis
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate gate_env
@@ -138,6 +138,13 @@ jobs:
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
           done
+
+      - name: Run 3D diagnostics
+        run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate gate_env
+
+          python diagnostic_3d_plot.py
 
       - name: Publish results to GitHub Pages
         run: |
@@ -165,4 +172,5 @@ jobs:
           path: |
             output/merged/
             output/analysis/
+            output/diagnostics/
           retention-days: 30
