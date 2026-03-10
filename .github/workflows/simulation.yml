@@ -22,7 +22,7 @@ on:
 jobs:
   simulate:
     runs-on: self-hosted
-    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'Update simulation results')
+    if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
     strategy:
       matrix:
         job_id: [1, 2, 3, 4]
