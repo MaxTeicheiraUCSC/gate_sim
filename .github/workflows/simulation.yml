@@ -1,0 +1,144 @@
+name: GATE Simulation
+
+on:
+  workflow_dispatch:
+    inputs:
+      primaries:
+        description: "Total number of primary particles"
+        required: false
+        default: "100000"
+        type: string
+      num_jobs:
+        description: "Number of parallel simulation jobs"
+        required: false
+        default: "4"
+        type: string
+
+jobs:
+  simulate:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        job_id: [1, 2, 3, 4]
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run simulation
+        run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate gate_env
+
+          TOTAL_PRIMARIES=${{ github.event.inputs.primaries || '100000' }}
+          NUM_JOBS=${{ github.event.inputs.num_jobs || '4' }}
+          PRIMARIES_PER_JOB=$((TOTAL_PRIMARIES / NUM_JOBS))
+
+          echo "## Simulation Job ${{ matrix.job_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Primaries:** ${PRIMARIES_PER_JOB} (of ${TOTAL_PRIMARIES} total)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Started:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          mkdir -p logs output
+
+          python czt_slit_simulation_cluster.py \
+            --seed ${{ matrix.job_id }} \
+            --primaries ${PRIMARIES_PER_JOB} \
+            --job-id ${{ matrix.job_id }}
+
+      - name: Report job results
+        if: always()
+        run: |
+          JOB_DIR="output/job_$(printf '%04d' ${{ matrix.job_id }})"
+
+          # Post metadata to job summary
+          if [ -f "${JOB_DIR}/job_metadata.txt" ]; then
+            echo "### Results" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat "${JOB_DIR}/job_metadata.txt" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f "${JOB_DIR}/simulation_stats.txt" ]; then
+            echo "### Simulation Statistics" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat "${JOB_DIR}/simulation_stats.txt" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show output file sizes
+          if [ -d "${JOB_DIR}" ]; then
+            echo "### Output Files" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            ls -lh "${JOB_DIR}/" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload job output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sim-output-job-${{ matrix.job_id }}
+          path: output/job_*
+          retention-days: 14
+
+  merge:
+    runs-on: self-hosted
+    needs: simulate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all simulation outputs
+        uses: actions/download-artifact@v4
+        with:
+          path: output
+          merge-multiple: true
+
+      - name: Merge results
+        run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate gate_env
+
+          echo "## Merge Results" >> $GITHUB_STEP_SUMMARY
+          echo "**Input directories:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -d output/job_* 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No job directories found" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          python merge_results.py --output-dir ./output
+
+          # Post merged stats
+          if [ -f "output/merged/merged_statistics.txt" ]; then
+            echo "### Merged Statistics" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat output/merged/merged_statistics.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Run diagnostics and generate plots
+        run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate gate_env
+
+          python analyze_phsp.py --input output/merged/phsp_detector_merged.root --output-dir output/analysis
+
+          # Embed plots in the job summary
+          echo "### Analysis Plots" >> $GITHUB_STEP_SUMMARY
+          for png in output/analysis/*.png; do
+            if [ -f "$png" ]; then
+              echo "#### $(basename "$png" .png)" >> $GITHUB_STEP_SUMMARY
+              echo "![$(basename "$png")]($(basename "$png"))" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Upload merged results and plots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: merged-results
+          path: |
+            output/merged/
+            output/analysis/
+          retention-days: 30
