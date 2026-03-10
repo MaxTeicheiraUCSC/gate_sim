@@ -1,9 +1,9 @@
 ============================================================
 Merged Simulation Statistics
 ============================================================
-Jobs merged: 10
-Total primaries: 200,000,000
-Total tracks: 248,967,271
-Total CPU time: 1026.0 seconds (0.29 hours)
-Average rate: 194924 primaries/second
+Jobs merged: 4
+Total primaries: 6,400,000
+Total tracks: 7,967,898
+Total CPU time: 32.0 seconds (0.01 hours)
+Average rate: 200125 primaries/second
 ============================================================
