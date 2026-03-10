@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GATE CZT Slit Simulation — Results</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-orange: #d29922;
+      --accent-red: #f85149;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 24px 0;
+      margin-bottom: 32px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+
+    header a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    header a:hover { text-decoration: underline; }
+
+    /* Navigation tabs */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent-orange);
+    }
+
+    /* Tab content */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Geometry section */
+    .geometry-diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+
+    .geometry-diagram pre {
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.8;
+    }
+
+    .geometry-diagram .source { color: var(--accent-red); }
+    .geometry-diagram .collimator { color: var(--text-muted); }
+    .geometry-diagram .detector { color: var(--accent); }
+    .geometry-diagram .label { color: var(--accent-green); }
+
+    /* Specs table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td { color: var(--text); }
+
+    tr:hover td { background: rgba(88, 166, 255, 0.04); }
+
+    /* Cards */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .card .value {
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .card .unit {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-left: 4px;
+    }
+
+    /* Image gallery */
+    .gallery {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .gallery-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .gallery-item .caption {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .gallery-item .caption h3 {
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+
+    .gallery-item .caption p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .gallery-item .image-container {
+      padding: 16px;
+      text-align: center;
+      background: #0a0e14;
+    }
+
+    .gallery-item img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+    }
+
+    .placeholder {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .placeholder .icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.4;
+    }
+
+    /* Upload section */
+    .upload-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .upload-section h3 {
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(88, 166, 255, 0.04);
+    }
+
+    .upload-zone input[type="file"] { display: none; }
+
+    .upload-zone p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .upload-zone .browse {
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* Processing section */
+    .processing-controls {
+      display: flex;
+      gap: 12px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover {
+      background: var(--border);
+    }
+
+    button.primary {
+      background: #238636;
+      border-color: rgba(63, 185, 80, 0.4);
+    }
+
+    button.primary:hover {
+      background: #2ea043;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .status-bar.info {
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.2);
+      color: var(--accent);
+    }
+
+    .status-bar.success {
+      background: rgba(63, 185, 80, 0.1);
+      border: 1px solid rgba(63, 185, 80, 0.2);
+      color: var(--accent-green);
+    }
+
+    .status-bar.warning {
+      background: rgba(210, 153, 34, 0.1);
+      border: 1px solid rgba(210, 153, 34, 0.2);
+      color: var(--accent-orange);
+    }
+
+    /* Results display */
+    #results-area {
+      margin-top: 16px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .stat-row .label { color: var(--text-muted); }
+    .stat-row .value { color: var(--text); font-weight: 500; }
+
+    /* Charts */
+    .chart-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .chart-container h4 {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: auto !important;
+    }
+
+    /* Code blocks */
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+      color: var(--text-muted);
+    }
+
+    /* Digitizer chain */
+    .chain {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+
+    .chain-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .chain-step .step-name {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .chain-step .step-detail {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .chain-arrow {
+      color: var(--text-muted);
+      font-size: 18px;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 0;
+      margin-top: 48px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .card-grid { grid-template-columns: 1fr; }
+      .chain { flex-direction: column; }
+      .chain-arrow { transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>GATE CZT Slit Simulation</h1>
+    <p>Monte Carlo simulation of Cs-137 through a tungsten slit collimator onto a CZT detector &middot;
+       <a href="https://github.com/MaxTeicheiraUCSC/gate_sim">View on GitHub</a></p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="results">Results</button>
+    <button class="tab" data-tab="processing">Load &amp; Process</button>
+    <button class="tab" data-tab="pipeline">Pipeline</button>
+  </div>
+
+  <!-- ==================== OVERVIEW ==================== -->
+  <div id="overview" class="tab-content active">
+
+    <div class="card-grid">
+      <div class="card">
+        <h3>Source</h3>
+        <p>Cs-137 point source, isotropic emission</p>
+        <div class="value">662 <span class="unit">keV</span></div>
+      </div>
+      <div class="card">
+        <h3>Collimator</h3>
+        <p>Tungsten block with air slit</p>
+        <div class="value">0.2 <span class="unit">mm slit</span></div>
+      </div>
+      <div class="card">
+        <h3>Detector</h3>
+        <p>CdZnTe semiconductor crystal</p>
+        <div class="value">5 &times; 40 &times; 40 <span class="unit">mm</span></div>
+      </div>
+      <div class="card">
+        <h3>Energy Resolution</h3>
+        <p>Gaussian blur at photopeak</p>
+        <div class="value">2% <span class="unit">FWHM @ 662 keV</span></div>
+      </div>
+    </div>
+
+    <div class="geometry-diagram">
+      <pre>
+  <span class="label">Cs-137 Source</span>          <span class="label">W Collimator (50mm)</span>         <span class="label">CZT Detector</span>
+
+  <span class="source">    *</span>  ─ ─ ─ ─ ─ ─ ─   <span class="collimator">████████████████████</span>         <span class="detector">┌─────────────┐</span>
+  <span class="source">   /|\</span>  ─ ─ ─ ─ ─ ─ ─   <span class="collimator">████████</span><span class="label">║║</span><span class="collimator">██████████</span>   ───   <span class="detector">│             │</span>
+  <span class="source">    │</span>   ─ ─ ─ ─ ─ ─ ─   <span class="collimator">████████████████████</span>         <span class="detector">│  5×40×40 mm │</span>
+  <span class="source">  662 keV</span>                                              <span class="detector">│   CdZnTe    │</span>
+  <span class="source">  (isotropic)</span>           <span class="label">0.2mm slit opening</span>           <span class="detector">└─────────────┘</span>
+
+  <span class="label">z = 0</span>                   <span class="label">z = 50 mm</span>                    <span class="label">z = 120 mm</span>
+      </pre>
+    </div>
+
+    <h2 style="font-size: 18px; margin-bottom: 16px;">Digitizer Chain</h2>
+    <div class="chain">
+      <div class="chain-step">
+        <div class="step-name">Hits Collection</div>
+        <div class="step-detail">All energy deposits</div>
+      </div>
+      <span class="chain-arrow">&rarr;</span>
+      <div class="chain-step">
+        <div class="step-name">Adder</div>
+        <div class="step-detail">Sum per event</div>
+      </div>
+      <span class="chain-arrow">&rarr;</span>
+      <div class="chain-step">
+        <div class="step-name">Energy Blurring</div>
+        <div class="step-detail">2% FWHM Gaussian</div>
+      </div>
+      <span class="chain-arrow">&rarr;</span>
+      <div class="chain-step">
+        <div class="step-name">Output</div>
+        <div class="step-detail">ROOT files</div>
+      </div>
+    </div>
+
+    <h2 style="font-size: 18px; margin: 24px 0 16px;">Simulation Parameters</h2>
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Physics List</td><td>G4EmStandardPhysics_option4</td><td>Full EM cascade</td></tr>
+        <tr><td>Production Cuts (world)</td><td>1.0 mm</td><td>Default region</td></tr>
+        <tr><td>Production Cuts (detector)</td><td>0.1 mm</td><td>Fine tracking in CZT</td></tr>
+        <tr><td>Detector Material</td><td>CdZnTe (5.78 g/cm&sup3;)</td><td>Custom material DB</td></tr>
+        <tr><td>Collimator Material</td><td>Tungsten (19.3 g/cm&sup3;)</td><td>GEANT4 built-in G4_W</td></tr>
+        <tr><td>Default Primaries</td><td>100,000,000</td><td>Distributed across jobs</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ==================== RESULTS ==================== -->
+  <div id="results" class="tab-content">
+    <div class="status-bar info">
+      Upload simulation output images or ROOT data on the "Load &amp; Process" tab to view results here.
+    </div>
+
+    <h2 style="font-size: 18px; margin-bottom: 16px;">Analysis Plots</h2>
+    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+      These plots are generated by <code>analyze_phsp.py</code> and <code>diagnostic_3d_plot.py</code> after merging simulation jobs.
+    </p>
+
+    <div class="gallery" id="results-gallery">
+      <div class="gallery-item">
+        <div class="caption">
+          <h3>Energy Spectrum</h3>
+          <p>Kinetic energy distribution (0 - 700 keV) with 662 keV Cs-137 photopeak reference</p>
+        </div>
+        <div class="image-container" id="img-energy-spectrum">
+          <div class="placeholder">
+            <div class="icon">&#x1F4CA;</div>
+            <p>Upload <code>energy_spectrum.png</code> from <code>output/analysis/</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-item">
+        <div class="caption">
+          <h3>Hit Map</h3>
+          <p>2D position distributions at the detector surface (X-Y and X-Z projections)</p>
+        </div>
+        <div class="image-container" id="img-hit-map">
+          <div class="placeholder">
+            <div class="icon">&#x1F5FA;</div>
+            <p>Upload <code>hit_map.png</code> from <code>output/analysis/</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-item">
+        <div class="caption">
+          <h3>X Distribution &amp; FWHM</h3>
+          <p>Slit projection analysis with full-width at half-maximum measurement</p>
+        </div>
+        <div class="image-container" id="img-x-dist">
+          <div class="placeholder">
+            <div class="icon">&#x1F4CF;</div>
+            <p>Upload <code>x_distribution.png</code> from <code>output/analysis/</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-item">
+        <div class="caption">
+          <h3>Analysis Summary</h3>
+          <p>6-panel overview: energy spectrum, hit maps, position distributions, statistics</p>
+        </div>
+        <div class="image-container" id="img-summary">
+          <div class="placeholder">
+            <div class="icon">&#x1F4CB;</div>
+            <p>Upload <code>analysis_summary.png</code> from <code>output/analysis/</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-item">
+        <div class="caption">
+          <h3>3D Geometry Visualization</h3>
+          <p>Wireframe detector, collimator, source, and slit opening in 3D</p>
+        </div>
+        <div class="image-container" id="img-3d-geometry">
+          <div class="placeholder">
+            <div class="icon">&#x1F4D0;</div>
+            <p>Upload <code>3d_full_geometry.png</code> from <code>output/diagnostics/</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-item">
+        <div class="caption">
+          <h3>Diagnostic Summary</h3>
+          <p>6-panel diagnostic: energy spectrum, hit maps, angular distribution, statistics</p>
+        </div>
+        <div class="image-container" id="img-diag-summary">
+          <div class="placeholder">
+            <div class="icon">&#x1F50D;</div>
+            <p>Upload <code>diagnostic_summary.png</code> from <code>output/diagnostics/</code></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== LOAD & PROCESS ==================== -->
+  <div id="processing" class="tab-content">
+
+    <h2 style="font-size: 18px; margin-bottom: 16px;">Upload Result Images</h2>
+    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+      Drop PNG files from <code>output/analysis/</code> or <code>output/diagnostics/</code> to display them on the Results tab.
+    </p>
+
+    <div class="upload-section">
+      <div class="upload-zone" id="image-upload-zone">
+        <input type="file" id="image-upload" accept=".png,.jpg,.jpeg" multiple>
+        <p>Drag &amp; drop PNG images here, or <span class="browse">browse</span></p>
+        <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+          Recognized filenames: energy_spectrum.png, hit_map.png, x_distribution.png, analysis_summary.png, 3d_full_geometry.png, diagnostic_summary.png
+        </p>
+      </div>
+    </div>
+
+    <div id="image-upload-status"></div>
+
+    <h2 style="font-size: 18px; margin: 32px 0 16px;">Upload Phase Space ROOT Data</h2>
+    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+      Upload a CSV export of phase space data for in-browser analysis. Export with:
+    </p>
+    <div class="code-block">
+      python -c "import uproot; t = uproot.open('phsp_detector_merged.root'); k = list(t.keys())[0].split(';')[0]; d = t[k].arrays(library='pd'); d.to_csv('phsp_data.csv', index=False)"
+    </div>
+
+    <div class="upload-section">
+      <div class="upload-zone" id="csv-upload-zone">
+        <input type="file" id="csv-upload" accept=".csv">
+        <p>Drag &amp; drop CSV file here, or <span class="browse">browse</span></p>
+        <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+          Expected columns: KineticEnergy, PrePosition_X, PrePosition_Y, PrePosition_Z
+        </p>
+      </div>
+    </div>
+
+    <div id="csv-upload-status"></div>
+
+    <div id="processing-section" style="display: none;">
+      <h2 style="font-size: 18px; margin: 24px 0 16px;">Data Processing</h2>
+
+      <div id="data-stats" class="card" style="margin-bottom: 16px;"></div>
+
+      <div class="processing-controls">
+        <button class="primary" id="btn-process" onclick="processData()">Generate Plots</button>
+        <button id="btn-download" onclick="downloadPlots()" disabled>Download All Plots</button>
+      </div>
+
+      <div id="results-area"></div>
+    </div>
+  </div>
+
+  <!-- ==================== PIPELINE ==================== -->
+  <div id="pipeline" class="tab-content">
+
+    <h2 style="font-size: 18px; margin-bottom: 16px;">Simulation Pipeline</h2>
+
+    <div class="code-block" style="line-height: 2;">
+<span style="color: var(--accent-green);">submit_jobs.sh</span>
+  └─ <span style="color: var(--accent);">submit_gate.sbatch</span> × N  <span style="color: var(--text-muted);">(parallel SLURM array)</span>
+       └─ <span style="color: var(--accent-orange);">czt_slit_simulation_cluster.py</span>  <span style="color: var(--text-muted);">(each job)</span>
+            └─ output/job_XXXX/*.root
+
+<span style="color: var(--accent-green);">merge_results.sbatch</span>  <span style="color: var(--text-muted);">(depends on all sim jobs)</span>
+  ├─ <span style="color: var(--accent);">merge_results.py</span>         → output/merged/
+  ├─ <span style="color: var(--accent);">diagnostic_3d_plot.py</span>    → output/diagnostics/
+  ├─ <span style="color: var(--accent);">analyze_phsp.py</span>          → output/analysis/
+  └─ Slack notification
+    </div>
+
+    <h2 style="font-size: 18px; margin: 24px 0 16px;">Output Files</h2>
+    <table>
+      <thead>
+        <tr><th>File</th><th>Stage</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>hits.root</code></td><td>Per-job</td><td>All energy deposit steps in detector</td></tr>
+        <tr><td><code>singles.root</code></td><td>Per-job</td><td>Summed energy per event</td></tr>
+        <tr><td><code>blurred.root</code></td><td>Per-job</td><td>Energy-blurred singles (2% FWHM)</td></tr>
+        <tr><td><code>phsp_detector.root</code></td><td>Per-job</td><td>Phase space at detector entrance</td></tr>
+        <tr><td><code>phsp_detector_merged.root</code></td><td>Merged</td><td>Combined phase space from all jobs</td></tr>
+        <tr><td><code>energy_spectrum.png</code></td><td>Analysis</td><td>Energy histogram with 662 keV reference</td></tr>
+        <tr><td><code>hit_map.png</code></td><td>Analysis</td><td>X-Y and X-Z detector surface maps</td></tr>
+        <tr><td><code>x_distribution.png</code></td><td>Analysis</td><td>Slit projection with FWHM</td></tr>
+        <tr><td><code>analysis_summary.png</code></td><td>Analysis</td><td>6-panel summary figure</td></tr>
+        <tr><td><code>3d_full_geometry.png</code></td><td>Diagnostics</td><td>3D wireframe visualization</td></tr>
+        <tr><td><code>diagnostic_summary.png</code></td><td>Diagnostics</td><td>6-panel diagnostic figure</td></tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-size: 18px; margin: 24px 0 16px;">Quick Commands</h2>
+    <div class="code-block">
+<span style="color: var(--accent-green);"># Test run (quick)</span>
+./submit_jobs.sh --test
+
+<span style="color: var(--accent-green);"># Production run (100M primaries)</span>
+./submit_jobs.sh -n 100000000 -j 10
+
+<span style="color: var(--accent-green);"># Manual post-processing</span>
+python merge_results.py --output-dir output
+python analyze_phsp.py --input output/merged/phsp_detector_merged.root
+python diagnostic_3d_plot.py --input output/merged/phsp_detector_merged.root
+
+<span style="color: var(--accent-green);"># Export data for web viewer</span>
+python -c "
+import uproot
+t = uproot.open('output/merged/phsp_detector_merged.root')
+k = list(t.keys())[0].split(';')[0]
+d = t[k].arrays(library='pd')
+d.to_csv('phsp_data.csv', index=False)
+"
+    </div>
+  </div>
+
+  <footer>
+    <p>GATE CZT Slit Simulation &middot; Built with
+       <a href="https://github.com/OpenGATE/opengate">OpenGATE 10</a> &middot;
+       UCSC &middot;
+       <a href="https://github.com/MaxTeicheiraUCSC/gate_sim">Source</a></p>
+  </footer>
+</div>
+
+<script>
+// ==================== TAB NAVIGATION ====================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ==================== IMAGE UPLOAD ====================
+const imageMapping = {
+  'energy_spectrum': 'img-energy-spectrum',
+  'hit_map': 'img-hit-map',
+  'x_distribution': 'img-x-dist',
+  'analysis_summary': 'img-summary',
+  '3d_full_geometry': 'img-3d-geometry',
+  'diagnostic_summary': 'img-diag-summary',
+  '3d_arrivals_energy': null,
+  'hitmap_detector': null,
+  'z_depth': null,
+};
+
+function setupUploadZone(zoneId, inputId, handler) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    handler(e.dataTransfer.files);
+  });
+  input.addEventListener('change', () => handler(input.files));
+}
+
+function handleImageUpload(files) {
+  const statusEl = document.getElementById('image-upload-status');
+  let loaded = 0;
+
+  Array.from(files).forEach(file => {
+    const baseName = file.name.replace(/\.(png|jpg|jpeg)$/i, '');
+    const targetId = imageMapping[baseName];
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      if (targetId) {
+        const container = document.getElementById(targetId);
+        container.innerHTML = `<img src="${e.target.result}" alt="${baseName}">`;
+        loaded++;
+      } else {
+        // Add as extra image to gallery
+        const gallery = document.getElementById('results-gallery');
+        const item = document.createElement('div');
+        item.className = 'gallery-item';
+        item.innerHTML = `
+          <div class="caption"><h3>${baseName.replace(/_/g, ' ')}</h3></div>
+          <div class="image-container"><img src="${e.target.result}" alt="${baseName}"></div>
+        `;
+        gallery.appendChild(item);
+        loaded++;
+      }
+      statusEl.innerHTML = `<div class="status-bar success">${loaded} image(s) loaded. Switch to the Results tab to view.</div>`;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+setupUploadZone('image-upload-zone', 'image-upload', handleImageUpload);
+
+// ==================== CSV UPLOAD & PROCESSING ====================
+let phspData = null;
+
+function handleCSVUpload(files) {
+  if (files.length === 0) return;
+  const statusEl = document.getElementById('csv-upload-status');
+  statusEl.innerHTML = '<div class="status-bar info">Loading CSV data...</div>';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.trim());
+    const data = {};
+    headers.forEach(h => data[h] = []);
+
+    for (let i = 1; i < lines.length; i++) {
+      const vals = lines[i].split(',');
+      headers.forEach((h, j) => data[h].push(parseFloat(vals[j])));
+    }
+
+    phspData = data;
+    const n = lines.length - 1;
+    statusEl.innerHTML = `<div class="status-bar success">Loaded ${n.toLocaleString()} entries with columns: ${headers.join(', ')}</div>`;
+
+    // Show stats
+    document.getElementById('processing-section').style.display = 'block';
+    const statsEl = document.getElementById('data-stats');
+    let statsHtml = '<h3>Data Summary</h3>';
+    headers.forEach(h => {
+      const arr = data[h].filter(v => !isNaN(v));
+      const min = Math.min(...arr);
+      const max = Math.max(...arr);
+      const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+      statsHtml += `<div class="stat-row"><span class="label">${h}</span><span class="value">min: ${min.toFixed(4)}, max: ${max.toFixed(4)}, mean: ${mean.toFixed(4)}</span></div>`;
+    });
+    statsEl.innerHTML = statsHtml;
+  };
+  reader.readAsText(files[0]);
+}
+
+setupUploadZone('csv-upload-zone', 'csv-upload', handleCSVUpload);
+
+// ==================== DATA PROCESSING ====================
+function processData() {
+  if (!phspData) return;
+
+  const area = document.getElementById('results-area');
+  area.innerHTML = '';
+
+  // Energy spectrum
+  if (phspData['KineticEnergy']) {
+    let energy = phspData['KineticEnergy'].slice();
+    // Convert MeV to keV if needed
+    const maxE = Math.max(...energy);
+    if (maxE < 1) energy = energy.map(e => e * 1000);
+
+    area.appendChild(createHistogramChart('Energy Spectrum', energy, 'Energy (keV)', 100, 0, 700, 662));
+  }
+
+  // X distribution
+  if (phspData['PrePosition_X']) {
+    const x = phspData['PrePosition_X'];
+    const fwhm = calcFWHM(x);
+    area.appendChild(createHistogramChart(
+      `X Distribution (FWHM = ${fwhm.toFixed(4)} mm)`, x, 'X Position (mm)', 100
+    ));
+  }
+
+  // Y distribution
+  if (phspData['PrePosition_Y']) {
+    area.appendChild(createHistogramChart(
+      'Y Distribution', phspData['PrePosition_Y'], 'Y Position (mm)', 80
+    ));
+  }
+
+  // Z depth
+  if (phspData['PrePosition_Z']) {
+    area.appendChild(createHistogramChart(
+      'Z Depth Distribution', phspData['PrePosition_Z'], 'Z Position (mm)', 80
+    ));
+  }
+
+  document.getElementById('btn-download').disabled = false;
+}
+
+function calcFWHM(data) {
+  const n = 100;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const binWidth = (max - min) / n;
+  const counts = new Array(n).fill(0);
+
+  data.forEach(v => {
+    let bin = Math.floor((v - min) / binWidth);
+    if (bin >= n) bin = n - 1;
+    if (bin >= 0) counts[bin]++;
+  });
+
+  const maxCount = Math.max(...counts);
+  const halfMax = maxCount / 2;
+  const peakIdx = counts.indexOf(maxCount);
+
+  let leftIdx = 0;
+  for (let i = peakIdx; i >= 0; i--) {
+    if (counts[i] < halfMax) { leftIdx = i; break; }
+  }
+  let rightIdx = n - 1;
+  for (let i = peakIdx; i < n; i++) {
+    if (counts[i] < halfMax) { rightIdx = i; break; }
+  }
+
+  return (rightIdx - leftIdx) * binWidth;
+}
+
+function createHistogramChart(title, data, xLabel, nBins, forceMin, forceMax, refLine) {
+  const container = document.createElement('div');
+  container.className = 'chart-container';
+
+  const heading = document.createElement('h4');
+  heading.textContent = title;
+  container.appendChild(heading);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 800;
+  canvas.height = 300;
+  container.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = { top: 20, right: 20, bottom: 40, left: 60 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  // Compute histogram
+  const minVal = forceMin !== undefined ? forceMin : Math.min(...data);
+  const maxVal = forceMax !== undefined ? forceMax : Math.max(...data);
+  const binWidth = (maxVal - minVal) / nBins;
+  const counts = new Array(nBins).fill(0);
+
+  data.forEach(v => {
+    let bin = Math.floor((v - minVal) / binWidth);
+    if (bin >= nBins) bin = nBins - 1;
+    if (bin >= 0) counts[bin]++;
+  });
+
+  const maxCount = Math.max(...counts);
+
+  // Background
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + plotH - (i / 5) * plotH;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(W - pad.right, y);
+    ctx.stroke();
+  }
+
+  // Bars
+  const barW = plotW / nBins;
+  ctx.fillStyle = '#4493f8';
+  counts.forEach((c, i) => {
+    const barH = (c / maxCount) * plotH;
+    const x = pad.left + i * barW;
+    const y = pad.top + plotH - barH;
+    ctx.fillRect(x, y, Math.max(barW - 1, 1), barH);
+  });
+
+  // Reference line
+  if (refLine !== undefined) {
+    const rx = pad.left + ((refLine - minVal) / (maxVal - minVal)) * plotW;
+    ctx.strokeStyle = '#f85149';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(rx, pad.top);
+    ctx.lineTo(rx, pad.top + plotH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f85149';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(`${refLine} keV`, rx + 4, pad.top + 14);
+  }
+
+  // Axes
+  ctx.strokeStyle = '#8b949e';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, pad.top + plotH);
+  ctx.lineTo(W - pad.right, pad.top + plotH);
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel, pad.left + plotW / 2, H - 8);
+
+  // X tick labels
+  for (let i = 0; i <= 5; i++) {
+    const val = minVal + (i / 5) * (maxVal - minVal);
+    const x = pad.left + (i / 5) * plotW;
+    ctx.fillText(val.toFixed(val > 100 ? 0 : 2), x, pad.top + plotH + 18);
+  }
+
+  // Y tick labels
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const val = (i / 5) * maxCount;
+    const y = pad.top + plotH - (i / 5) * plotH;
+    ctx.fillText(val.toFixed(0), pad.left - 8, y + 4);
+  }
+
+  ctx.save();
+  ctx.translate(14, pad.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('Counts', 0, 0);
+  ctx.restore();
+
+  // Stats
+  const mean = data.reduce((a, b) => a + b, 0) / data.length;
+  const std = Math.sqrt(data.reduce((a, b) => a + (b - mean) ** 2, 0) / data.length);
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`n=${data.length.toLocaleString()}  mean=${mean.toFixed(2)}  std=${std.toFixed(2)}`, pad.left + 8, pad.top + 14);
+
+  return container;
+}
+
+function downloadPlots() {
+  const canvases = document.querySelectorAll('#results-area canvas');
+  canvases.forEach((c, i) => {
+    const link = document.createElement('a');
+    const title = c.parentElement.querySelector('h4').textContent.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    link.download = `${title}.png`;
+    link.href = c.toDataURL('image/png');
+    link.click();
+  });
+}
+</script>
+
+</body>
+</html>
