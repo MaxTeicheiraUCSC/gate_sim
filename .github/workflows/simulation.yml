@@ -214,6 +214,8 @@ jobs:
     runs-on: self-hosted
     needs: [analysis, diagnostics]
     if: always() && (needs.analysis.result == 'success' || needs.diagnostics.result == 'success')
+    env:
+      PATH: /mnt/beegfs/cluster/software/apps/git/gnu13-2.52.0/bin:/usr/local/bin:/usr/bin:/bin
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -240,9 +242,6 @@ jobs:
 
       - name: Publish results to GitHub Pages
         run: |
-          export PATH="/mnt/beegfs/cluster/software/apps/git/gnu13-2.52.0/bin:$PATH"
-          cd "$GITHUB_WORKSPACE"
-
           mkdir -p docs/results
           cp output/analysis/*.png docs/results/ 2>/dev/null || true
           cp output/diagnostics/*.png docs/results/ 2>/dev/null || true
