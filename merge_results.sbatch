@@ -179,42 +179,6 @@ except Exception as e:
     fi
 fi
 
-# ── Step 5: Publish results to GitHub Pages ──
-echo ""
-echo "Step 5: Publishing results to GitHub Pages..."
-DOCS_RESULTS="${GATE_SIM_DIR}/docs/results"
-mkdir -p "${DOCS_RESULTS}"
-
-# Copy analysis and diagnostic PNGs
-COPIED=0
-for img in "${GATE_SIM_DIR}/output/analysis/"*.png "${GATE_SIM_DIR}/output/diagnostics/"*.png; do
-    [[ -f "$img" ]] || continue
-    cp "$img" "${DOCS_RESULTS}/"
-    COPIED=$((COPIED + 1))
-done
-echo "Copied ${COPIED} images to docs/results/"
-
-# Copy merged statistics if available
-if [[ -f "${GATE_SIM_DIR}/output/merged/merged_statistics.txt" ]]; then
-    cp "${GATE_SIM_DIR}/output/merged/merged_statistics.txt" "${DOCS_RESULTS}/"
-fi
-
-# Commit and push to GitHub
-if [[ ${COPIED} -gt 0 ]]; then
-    cd "${GATE_SIM_DIR}"
-    git add docs/results/
-    git commit -m "Update simulation results ($(date +%Y-%m-%d), ${COPIED} plots)"
-    git push origin main
-    PAGES_EXIT=$?
-    if [[ ${PAGES_EXIT} -eq 0 ]]; then
-        echo "Results published — site will update at https://maxteicheiraucsc.github.io/gate_sim/"
-    else
-        echo "Warning: git push failed (exit ${PAGES_EXIT}). Results saved locally in docs/results/"
-    fi
-else
-    echo "No images to publish"
-fi
-
 # Exit with worst code
 FINAL_EXIT=0
 [[ ${MERGE_EXIT} -ne 0 ]] && FINAL_EXIT=${MERGE_EXIT}

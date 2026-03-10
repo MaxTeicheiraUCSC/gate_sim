@@ -1,5 +1,8 @@
 name: GATE Simulation
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -132,6 +135,24 @@ jobs:
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
           done
+
+      - name: Publish results to GitHub Pages
+        run: |
+          mkdir -p docs/results
+          cp output/analysis/*.png docs/results/ 2>/dev/null || true
+          cp output/diagnostics/*.png docs/results/ 2>/dev/null || true
+          cp output/merged/merged_statistics.txt docs/results/ 2>/dev/null || true
+
+          COPIED=$(ls docs/results/*.png 2>/dev/null | wc -l)
+          echo "Copied ${COPIED} plots to docs/results/"
+
+          if [ "${COPIED}" -gt 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/results/
+            git commit -m "Update simulation results ($(date +%Y-%m-%d), ${COPIED} plots)" || echo "No changes to commit"
+            git push
+          fi
 
       - name: Upload merged results and plots
         uses: actions/upload-artifact@v4
