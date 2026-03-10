@@ -117,26 +117,43 @@ def merge_root_files(job_dirs, merged_dir):
         all_data = {}
         tree_name = None
 
+        total_entries = 0
         for i, rf in enumerate(root_files):
-            print(f"    Reading {i+1}/{len(root_files)}: {os.path.basename(rf)}")
             with uproot.open(rf) as f:
                 # Get the tree name (usually "phsp_detector" or similar)
                 if tree_name is None:
                     tree_name = list(f.keys())[0].split(";")[0]
 
                 tree = f[tree_name]
-                arrays = tree.arrays()
+                n = tree.num_entries
+                total_entries += n
+                print(f"    Reading {i+1}/{len(root_files)}: {os.path.basename(rf)} ({n} entries)")
 
-                for key in arrays.fields:
+                if n == 0:
+                    continue
+
+                arrays = tree.arrays(library="np")
+                for key in arrays:
                     if key not in all_data:
                         all_data[key] = []
                     all_data[key].append(arrays[key])
 
-        # Concatenate all arrays
-        merged_data = {key: ak.concatenate(vals) for key, vals in all_data.items()}
+        print(f"  Total entries across all files: {total_entries}")
+
+        if total_entries == 0:
+            print("  Warning: All files are empty — no data to merge")
+            # Write an empty file so downstream scripts don't fail
+            import numpy as np
+            with uproot.recreate(merged_root) as f:
+                f[tree_name] = {}
+            return True
+
+        # Concatenate all arrays using numpy
+        import numpy as np
+        merged_data = {key: np.concatenate(vals) for key, vals in all_data.items()}
 
         # Write merged file
-        print(f"  Writing merged file: {merged_root}")
+        print(f"  Writing merged file: {merged_root} ({total_entries} entries)")
         with uproot.recreate(merged_root) as f:
             f[tree_name] = merged_data
 
