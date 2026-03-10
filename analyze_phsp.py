@@ -75,6 +75,9 @@ def load_data(filename):
 
     with uproot.open(filename) as f:
         # Get the first tree (strip ROOT cycle number e.g. ";1")
+        if not f.keys():
+            print(f"Warning: No trees found in {filename}")
+            return {}
         tree_name = list(f.keys())[0].split(";")[0]
         tree = f[tree_name]
 
@@ -97,16 +100,27 @@ def load_data(filename):
         return data
 
 
-def plot_energy_spectrum(data, output_dir):
+def _get_energy(data, blurred_data):
+    """Get energy array, preferring blurred TotalEnergyDeposit over raw KineticEnergy."""
+    if blurred_data is not None and 'TotalEnergyDeposit' in blurred_data:
+        energy = blurred_data['TotalEnergyDeposit'].copy()
+        if len(energy) > 0 and energy.max() < 1:
+            energy = energy * 1000  # MeV to keV
+        return energy, 'TotalEnergyDeposit (blurred)'
+    if 'KineticEnergy' in data:
+        energy = data['KineticEnergy'] * 1000
+        if energy.max() > 1000:
+            energy = data['KineticEnergy']
+        return energy, 'KineticEnergy (raw)'
+    return None, None
+
+
+def plot_energy_spectrum(data, output_dir, blurred_data=None):
     """Plot energy spectrum."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Energy in keV
-    if 'KineticEnergy' in data:
-        energy = data['KineticEnergy'] * 1000  # Convert to keV if in MeV
-        if energy.max() > 1000:  # Already in keV
-            energy = data['KineticEnergy']
-    else:
+    energy, source = _get_energy(data, blurred_data)
+    if energy is None:
         print("Warning: No energy data found")
         return None
 
@@ -122,13 +136,11 @@ def plot_energy_spectrum(data, output_dir):
     ax.grid(True, alpha=0.3)
 
     # Add photopeak annotation
-    peak_idx = np.argmax(counts[bins[:-1] > 600])
-    peak_energy = bins[:-1][bins[:-1] > 600][peak_idx]
     ax.axvline(662, color='red', linestyle='--', linewidth=1.5, label='662 keV (Cs-137)')
     ax.legend(fontsize=10)
 
     # Statistics
-    stats_text = f'Total hits: {len(energy):,}\nMean: {energy.mean():.1f} keV\nStd: {energy.std():.1f} keV'
+    stats_text = f'Total hits: {len(energy):,}\nMean: {energy.mean():.1f} keV\nStd: {energy.std():.1f} keV\nSource: {source}'
     ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=10,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
@@ -260,14 +272,14 @@ def plot_z_depth(data, output_dir):
     return outfile
 
 
-def plot_summary(data, output_dir):
+def plot_summary(data, output_dir, blurred_data=None):
     """Create a summary figure with multiple panels."""
     fig = plt.figure(figsize=(16, 12))
 
-    # Get data
-    energy = data.get('KineticEnergy', np.array([]))
-    if len(energy) > 0 and energy.max() < 1:
-        energy = energy * 1000  # Convert MeV to keV
+    # Get data — prefer blurred energy
+    energy, _ = _get_energy(data, blurred_data)
+    if energy is None:
+        energy = np.array([])
 
     x = data.get('PrePosition_X', data.get('PostPosition_X', np.array([])))
     y = data.get('PrePosition_Y', data.get('PostPosition_Y', np.array([])))
@@ -360,6 +372,8 @@ def main():
     parser = argparse.ArgumentParser(description='Analyze GATE phase space data')
     parser.add_argument('--input', type=str, default='output/merged/phsp_detector_merged.root',
                         help='Input ROOT file')
+    parser.add_argument('--blurred', type=str, default=None,
+                        help='Blurred energy ROOT file (uses TotalEnergyDeposit for spectrum)')
     parser.add_argument('--output-dir', type=str, default='output/analysis',
                         help='Output directory for plots')
     args = parser.parse_args()
@@ -375,14 +389,30 @@ def main():
     data = load_data(args.input)
     print(f"\nLoaded {len(data.get('KineticEnergy', []))} entries")
 
+    # Load blurred data if available
+    blurred_data = None
+    blurred_path = args.blurred
+    if blurred_path is None:
+        # Auto-detect: look for blurred_merged.root next to input
+        auto_path = os.path.join(os.path.dirname(args.input), 'blurred_merged.root')
+        if os.path.isfile(auto_path):
+            blurred_path = auto_path
+
+    if blurred_path and os.path.isfile(blurred_path):
+        print(f"Loading blurred data: {blurred_path}")
+        blurred_data = load_data(blurred_path)
+        print(f"  Blurred entries: {len(blurred_data.get('TotalEnergyDeposit', []))}")
+    else:
+        print("No blurred data found — using raw KineticEnergy for spectrum")
+
     # Generate plots
     print("\nGenerating visualizations...")
 
-    plot_energy_spectrum(data, args.output_dir)
+    plot_energy_spectrum(data, args.output_dir, blurred_data)
     plot_hit_map(data, args.output_dir)
     plot_x_distribution(data, args.output_dir)
     plot_z_depth(data, args.output_dir)
-    plot_summary(data, args.output_dir)
+    plot_summary(data, args.output_dir, blurred_data)
 
     print("\n" + "=" * 60)
     print("Analysis complete!")

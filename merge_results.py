@@ -71,26 +71,20 @@ def find_job_directories(output_dir, job_ids=None):
     return job_dirs
 
 
-def merge_root_files(job_dirs, merged_dir):
-    """Merge ROOT phase space files using hadd."""
-    print("\n" + "=" * 60)
-    print("Merging ROOT Phase Space Files")
-    print("=" * 60)
-
+def _merge_root_set(job_dirs, merged_dir, filename, merged_name):
+    """Merge a set of ROOT files with the given filename across job dirs."""
     root_files = []
     for job_id, job_dir in job_dirs:
-        phsp_file = os.path.join(job_dir, "phsp_detector.root")
-        if os.path.exists(phsp_file):
-            root_files.append(phsp_file)
-            print(f"  Found: {phsp_file}")
-        else:
-            print(f"  Warning: Missing {phsp_file}")
+        f = os.path.join(job_dir, filename)
+        if os.path.exists(f):
+            root_files.append(f)
+            print(f"  Found: {f}")
 
     if not root_files:
-        print("  No ROOT files found to merge!")
-        return False
+        print(f"  No {filename} files found — skipping")
+        return True
 
-    merged_root = os.path.join(merged_dir, "phsp_detector_merged.root")
+    merged_root = os.path.join(merged_dir, merged_name)
 
     # Try using hadd (ROOT's file merger)
     try:
@@ -134,6 +128,9 @@ def merge_root_files(job_dirs, merged_dir):
 
                 arrays = tree.arrays(library="np")
                 for key in arrays:
+                    # Skip string/object branches — uproot can't write them back
+                    if arrays[key].dtype == object:
+                        continue
                     if key not in all_data:
                         all_data[key] = []
                     all_data[key].append(arrays[key])
@@ -167,6 +164,20 @@ def merge_root_files(job_dirs, merged_dir):
     except Exception as e:
         print(f"  Error merging ROOT files: {e}")
         return False
+
+
+def merge_root_files(job_dirs, merged_dir):
+    """Merge ROOT phase space and blurred energy files."""
+    print("\n" + "=" * 60)
+    print("Merging ROOT Files")
+    print("=" * 60)
+
+    ok = True
+    if not _merge_root_set(job_dirs, merged_dir, "phsp_detector.root", "phsp_detector_merged.root"):
+        ok = False
+    if not _merge_root_set(job_dirs, merged_dir, "blurred.root", "blurred_merged.root"):
+        ok = False
+    return ok
 
 
 def merge_dose_maps(job_dirs, merged_dir):
