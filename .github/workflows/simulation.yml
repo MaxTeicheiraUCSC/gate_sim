@@ -20,12 +20,32 @@ on:
         type: string
 
 jobs:
-  simulate:
+  setup:
     runs-on: self-hosted
     if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      num_jobs: ${{ steps.set-matrix.outputs.num_jobs }}
+      primaries: ${{ steps.set-matrix.outputs.primaries }}
+    steps:
+      - name: Build job matrix
+        id: set-matrix
+        run: |
+          NUM_JOBS=${{ github.event.inputs.num_jobs || '4' }}
+          PRIMARIES=${{ github.event.inputs.primaries || '100000' }}
+          # Build JSON array [1, 2, ..., NUM_JOBS]
+          MATRIX=$(python3 -c "import json; print(json.dumps(list(range(1, int('${NUM_JOBS}') + 1))))")
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+          echo "num_jobs=${NUM_JOBS}" >> $GITHUB_OUTPUT
+          echo "primaries=${PRIMARIES}" >> $GITHUB_OUTPUT
+          echo "Matrix: ${MATRIX}, Primaries: ${PRIMARIES}, Jobs: ${NUM_JOBS}"
+
+  simulate:
+    runs-on: self-hosted
+    needs: setup
     strategy:
       matrix:
-        job_id: [1, 2, 3, 4]
+        job_id: ${{ fromJson(needs.setup.outputs.matrix) }}
       fail-fast: false
     steps:
       - name: Checkout code
@@ -36,8 +56,8 @@ jobs:
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate gate_env
 
-          TOTAL_PRIMARIES=${{ github.event.inputs.primaries || '100000' }}
-          NUM_JOBS=${{ github.event.inputs.num_jobs || '4' }}
+          TOTAL_PRIMARIES=${{ needs.setup.outputs.primaries }}
+          NUM_JOBS=${{ needs.setup.outputs.num_jobs }}
           PRIMARIES_PER_JOB=$((TOTAL_PRIMARIES / NUM_JOBS))
 
           echo "## Simulation Job ${{ matrix.job_id }}" >> $GITHUB_STEP_SUMMARY
