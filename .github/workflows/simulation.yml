@@ -148,6 +148,10 @@ jobs:
 
       - name: Publish results to GitHub Pages
         run: |
+          # git is provided via module on this cluster
+          source /etc/profile.d/lmod.sh 2>/dev/null || true
+          module load git 2>/dev/null || true
+
           mkdir -p docs/results
           cp output/analysis/*.png docs/results/ 2>/dev/null || true
           cp output/diagnostics/*.png docs/results/ 2>/dev/null || true
