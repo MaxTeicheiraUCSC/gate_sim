@@ -186,7 +186,7 @@ def run_simulation(args):
     slit.color = [1.0, 1.0, 0.0, 1.0]
 
     # Physics - include all EM processes for Compton scattering
-    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
+    sim.physics_manager.physics_list_name = "G4EmLivermorePhysics"
     sim.physics_manager.set_production_cut("world", "all", 1 * mm)
     sim.physics_manager.set_production_cut("czt_detector", "all", 0.1 * mm)
     sim.physics_manager.set_production_cut("collimator_body", "all", 0.1 * mm)

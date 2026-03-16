@@ -31,7 +31,7 @@ The simulation models realistic detector response:
 3. **Energy Blurring** — Gaussian blur, 2% FWHM at 662 keV (typical CZT resolution)
 4. **Phase Space** — Records photon positions/directions at detector entrance
 
-Physics list: `G4EmStandardPhysics_option4` with production cuts of 0.1 mm in detector/collimator regions.
+Physics list: `G4EmLivermorePhysics` with production cuts of 0.1 mm in detector/collimator regions.
 
 ## Quick Start
 
