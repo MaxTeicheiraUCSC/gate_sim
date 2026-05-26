@@ -203,10 +203,15 @@ def main():
         e = dict(columns)["energy_keV"]
         print(f"Energy: mean={e.mean():.1f} keV, "
               f"min={e.min():.1f}, max={e.max():.1f} keV")
-        if "z_mm" in header:
-            z = dict(columns)["z_mm"]
-            print(f"z_mm (detector frame): min={z.min():.2f}, "
-                  f"max={z.max():.2f}  (expect ~±2.5 mm, half-thickness)")
+        # Detector is [x,y,z] = [5,40,40] mm: x is the thin slit-resolved
+        # axis (|x|<=2.5), y is open (|y|<=20), z is depth along the beam
+        # (|z|<=20). Ranges outside these hint at a wrong --detector-center.
+        col = dict(columns)
+        for ax, half in (("x_mm", 2.5), ("y_mm", 20.0), ("z_mm", 20.0)):
+            if ax in col:
+                a = col[ax]
+                print(f"{ax} (detector frame): min={a.min():.2f}, "
+                      f"max={a.max():.2f}  (expect |.|<= {half} mm)")
 
 
 if __name__ == "__main__":
