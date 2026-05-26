@@ -3,19 +3,19 @@
 Export per-hit list-mode data from the CZT detector ROOT output.
 
 GATE's digitizer output is already list-mode: each entry in the ROOT tree is
-one detected single (energy, time, position). This script is a format
+one detected single (energy, time, position, ...). This script is a format
 converter -- it flattens that tree into a CSV for programs that don't read
-ROOT, projecting down to the columns of interest and transforming positions
-into the CZT detector frame.
+ROOT. By default it keeps EVERY branch (nothing thrown away) and ADDS two
+derived convenience columns: energy in keV and position in the CZT detector
+frame.
 
 By default it reads the blurred singles file, whose TotalEnergyDeposit branch
 is the per-event detected energy WITH realistic CZT energy resolution
 (2% FWHM @ 662 keV). One CSV row = one detected single.
 
-Output columns (default): EventID, energy_keV, time_ns, x_mm, y_mm, z_mm
-  - energy_keV : deposited energy, converted MeV -> keV.
-  - time_ns    : GlobalTime, raw value (Geant4 stores ns; see --time-unit).
-  - x_mm/y_mm/z_mm : detected position RELATIVE TO THE CZT DETECTOR CENTER.
+Derived columns appended to the raw branches:
+  - energy_keV       : TotalEnergyDeposit converted MeV -> keV.
+  - x_mm/y_mm/z_mm   : detected position RELATIVE TO THE CZT DETECTOR CENTER.
 
 Coordinate transform
 ---------------------
@@ -33,8 +33,8 @@ Usage
     # Single-job file works too:
     python export_listmode.py --input output/job_0001/blurred.root
 
-    # Just energy (EventID, energy_keV):
-    python export_listmode.py --input blurred_merged.root --energy-only
+    # Raw branches only, skip the derived energy_keV / x_mm columns:
+    python export_listmode.py --input blurred_merged.root --no-derived
 
     # Override the detector center (mm) if the geometry changed:
     python export_listmode.py --input blurred_merged.root --detector-center 0 0 120
@@ -114,8 +114,7 @@ def find_position_prefix(data, n):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Export detector list-mode data (energy/time/position) "
-                    "from GATE ROOT output"
+        description="Export full detector list-mode data from GATE ROOT output"
     )
     parser.add_argument(
         "--input", default="output/merged/blurred_merged.root",
@@ -130,19 +129,14 @@ def main():
         help="Units of TotalEnergyDeposit in the file (default: auto-detect)",
     )
     parser.add_argument(
-        "--time-unit", default="ns",
-        help="Label for the GlobalTime column; value is written raw "
-             "(Geant4 stores ns). Default: ns",
-    )
-    parser.add_argument(
         "--detector-center", nargs=3, type=float, metavar=("X", "Y", "Z"),
         default=list(DEFAULT_DETECTOR_CENTER),
-        help="CZT detector center in world mm; positions are reported "
-             "relative to it (default: 0 0 120)",
+        help="CZT detector center in world mm; derived x/y/z_mm columns are "
+             "reported relative to it (default: 0 0 120)",
     )
     parser.add_argument(
-        "--energy-only", action="store_true",
-        help="Export only EventID + energy_keV (skip time and position)",
+        "--no-derived", action="store_true",
+        help="Export raw branches only; skip derived energy_keV and x/y/z_mm",
     )
     args = parser.parse_args()
 
@@ -160,37 +154,35 @@ def main():
               file=sys.stderr)
         sys.exit(1)
 
-    energy = to_keV(data["TotalEnergyDeposit"].astype(float), args.energy_unit)
-    n = len(energy)
+    n = len(data["TotalEnergyDeposit"])
 
-    # Assemble columns. EventID and energy are always present.
+    # 1. Keep ALL raw branches that line up with the entry count (one row per
+    #    detected single). Branches of a different length (e.g. flattened
+    #    vectors) are skipped so the CSV stays rectangular.
     columns = []
-    if "EventID" in data and len(data["EventID"]) == n:
-        columns.append(("EventID", data["EventID"]))
-    columns.append(("energy_keV", energy))
-
-    if not args.energy_only:
-        # Time
-        if "GlobalTime" in data and len(data["GlobalTime"]) == n:
-            columns.append((f"time_{args.time_unit}", data["GlobalTime"]))
+    for name, arr in data.items():
+        if len(arr) == n:
+            columns.append((name, arr))
         else:
-            print("  Warning: no GlobalTime branch -> time column omitted")
+            print(f"  Skipping branch (length {len(arr)} != {n}): {name}")
 
-        # Position, transformed into the detector frame.
+    # 2. Append derived convenience columns alongside the raw data.
+    if not args.no_derived:
+        energy_keV = to_keV(data["TotalEnergyDeposit"].astype(float),
+                            args.energy_unit)
+        columns.append(("energy_keV", energy_keV))
+
         cx, cy, cz = args.detector_center
         prefix, comps = find_position_prefix(data, n)
         if prefix is not None:
-            print(f"  Using {prefix}_{{X,Y,Z}}; subtracting detector center "
-                  f"({cx}, {cy}, {cz}) mm")
-            x = data[comps[0]].astype(float) - cx
-            y = data[comps[1]].astype(float) - cy
-            z = data[comps[2]].astype(float) - cz
-            columns.append(("x_mm", x))
-            columns.append(("y_mm", y))
-            columns.append(("z_mm", z))
+            print(f"  Derived x/y/z_mm from {prefix}_{{X,Y,Z}}; subtracting "
+                  f"detector center ({cx}, {cy}, {cz}) mm")
+            columns.append(("x_mm", data[comps[0]].astype(float) - cx))
+            columns.append(("y_mm", data[comps[1]].astype(float) - cy))
+            columns.append(("z_mm", data[comps[2]].astype(float) - cz))
         else:
             print("  Warning: no position branch (PostPosition/Position/"
-                  "PrePosition) -> x/y/z columns omitted")
+                  "PrePosition) -> derived x/y/z_mm omitted")
 
     out_path = args.output
     if out_path is None:
@@ -206,12 +198,13 @@ def main():
             writer.writerow(row)
 
     print(f"\nWrote {n:,} detector hits -> {out_path}")
-    print(f"Columns: {', '.join(header)}")
-    if n > 0:
-        print(f"Energy: mean={energy.mean():.1f} keV, "
-              f"min={energy.min():.1f}, max={energy.max():.1f} keV")
-        if not args.energy_only and "z_mm" in header:
-            z = arrays[header.index("z_mm")]
+    print(f"Columns ({len(header)}): {', '.join(header)}")
+    if n > 0 and not args.no_derived:
+        e = dict(columns)["energy_keV"]
+        print(f"Energy: mean={e.mean():.1f} keV, "
+              f"min={e.min():.1f}, max={e.max():.1f} keV")
+        if "z_mm" in header:
+            z = dict(columns)["z_mm"]
             print(f"z_mm (detector frame): min={z.min():.2f}, "
                   f"max={z.max():.2f}  (expect ~±2.5 mm, half-thickness)")
 
