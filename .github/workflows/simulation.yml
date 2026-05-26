@@ -210,6 +210,45 @@ jobs:
           path: output/diagnostics/
           retention-days: 30
 
+  listmode:
+    runs-on: self-hosted
+    needs: merge
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download merged data
+        uses: actions/download-artifact@v4
+        with:
+          name: merged-data
+          path: output/merged
+
+      - name: Export list-mode energy CSV
+        run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate gate_env
+
+          mkdir -p output/listmode
+          python export_listmode.py \
+            --input output/merged/blurred_merged.root \
+            --output output/listmode/listmode.csv
+
+          if [ -f output/listmode/listmode.csv ]; then
+            echo "### List-mode Export" >> $GITHUB_STEP_SUMMARY
+            echo "- **Rows:** $(($(wc -l < output/listmode/listmode.csv) - 1)) detector hits" >> $GITHUB_STEP_SUMMARY
+            echo "- **Size:** $(du -h output/listmode/listmode.csv | cut -f1)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the \`listmode-data\` artifact below." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload list-mode CSV
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: listmode-data
+          path: output/listmode/
+          retention-days: 30
+
   publish:
     runs-on: self-hosted
     needs: [analysis, diagnostics]
