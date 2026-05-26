@@ -1,23 +1,43 @@
 #!/usr/bin/env python3
 """
-Export per-hit list-mode energy data from the CZT detector ROOT output.
+Export per-hit list-mode data from the CZT detector ROOT output.
 
-The simulation attaches all digitizer actors to "czt_detector" only, so these
-ROOT files already contain detector hits exclusively (no collimator data).
+GATE's digitizer output is already list-mode: each entry in the ROOT tree is
+one detected single (energy, time, position). This script is a format
+converter -- it flattens that tree into a CSV for programs that don't read
+ROOT, projecting down to the columns of interest and transforming positions
+into the CZT detector frame.
 
-By default this reads the blurred singles file, whose TotalEnergyDeposit branch
+By default it reads the blurred singles file, whose TotalEnergyDeposit branch
 is the per-event detected energy WITH realistic CZT energy resolution
 (2% FWHM @ 662 keV). One CSV row = one detected single.
 
-Usage:
+Output columns (default): EventID, energy_keV, time_ns, x_mm, y_mm, z_mm
+  - energy_keV : deposited energy, converted MeV -> keV.
+  - time_ns    : GlobalTime, raw value (Geant4 stores ns; see --time-unit).
+  - x_mm/y_mm/z_mm : detected position RELATIVE TO THE CZT DETECTOR CENTER.
+
+Coordinate transform
+---------------------
+GATE writes positions in global/world coordinates (mm). The CZT detector is a
+Box placed in the world with no rotation at translation [0, 0, 120] mm
+(= source_to_detector + detector_z/2, from czt_slit_simulation_cluster.py).
+Detector-frame coords are therefore global - detector_center. If the geometry
+changes, pass the new center with --detector-center X Y Z (mm).
+
+Usage
+-----
     # Run on the merged-data artifact downloaded from a GitHub Actions run:
     python export_listmode.py --input blurred_merged.root --output listmode.csv
 
     # Single-job file works too:
     python export_listmode.py --input output/job_0001/blurred.root
 
-    # Include time + position columns as well as energy:
-    python export_listmode.py --input blurred_merged.root --full
+    # Just energy (EventID, energy_keV):
+    python export_listmode.py --input blurred_merged.root --energy-only
+
+    # Override the detector center (mm) if the geometry changed:
+    python export_listmode.py --input blurred_merged.root --detector-center 0 0 120
 """
 
 import argparse
@@ -36,6 +56,12 @@ try:
 except ImportError:
     print("Error: uproot not installed. Run: pip install uproot", file=sys.stderr)
     sys.exit(1)
+
+
+# Default CZT detector center in world coordinates (mm).
+# From czt_slit_simulation_cluster.py: detector.translation =
+# [0, 0, source_to_detector + detector_z/2] = [0, 0, 100 + 20] = [0, 0, 120].
+DEFAULT_DETECTOR_CENTER = (0.0, 0.0, 120.0)
 
 
 def load_branches(filename):
@@ -73,9 +99,23 @@ def to_keV(energy, unit):
     return energy
 
 
+def find_position_prefix(data, n):
+    """Pick the position branch family present in the file.
+
+    Singles/blurred carry the winning hit's position (EnergyWinnerPosition
+    policy); prefer that. Fall back to pre-step or a generic Position.
+    """
+    for prefix in ("PostPosition", "Position", "PrePosition"):
+        comps = [f"{prefix}_{ax}" for ax in ("X", "Y", "Z")]
+        if all(c in data and len(data[c]) == n for c in comps):
+            return prefix, comps
+    return None, None
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Export detector list-mode energy data from GATE ROOT output"
+        description="Export detector list-mode data (energy/time/position) "
+                    "from GATE ROOT output"
     )
     parser.add_argument(
         "--input", default="output/merged/blurred_merged.root",
@@ -90,8 +130,19 @@ def main():
         help="Units of TotalEnergyDeposit in the file (default: auto-detect)",
     )
     parser.add_argument(
-        "--full", action="store_true",
-        help="Also export GlobalTime and position columns when available",
+        "--time-unit", default="ns",
+        help="Label for the GlobalTime column; value is written raw "
+             "(Geant4 stores ns). Default: ns",
+    )
+    parser.add_argument(
+        "--detector-center", nargs=3, type=float, metavar=("X", "Y", "Z"),
+        default=list(DEFAULT_DETECTOR_CENTER),
+        help="CZT detector center in world mm; positions are reported "
+             "relative to it (default: 0 0 120)",
+    )
+    parser.add_argument(
+        "--energy-only", action="store_true",
+        help="Export only EventID + energy_keV (skip time and position)",
     )
     args = parser.parse_args()
 
@@ -112,18 +163,34 @@ def main():
     energy = to_keV(data["TotalEnergyDeposit"].astype(float), args.energy_unit)
     n = len(energy)
 
-    # Assemble columns: energy is always present; EventID if available.
+    # Assemble columns. EventID and energy are always present.
     columns = []
     if "EventID" in data and len(data["EventID"]) == n:
         columns.append(("EventID", data["EventID"]))
     columns.append(("energy_keV", energy))
 
-    if args.full:
-        for name in ("GlobalTime", "PostPosition_X", "PostPosition_Y",
-                     "PostPosition_Z", "PrePosition_X", "PrePosition_Y",
-                     "PrePosition_Z"):
-            if name in data and len(data[name]) == n:
-                columns.append((name, data[name]))
+    if not args.energy_only:
+        # Time
+        if "GlobalTime" in data and len(data["GlobalTime"]) == n:
+            columns.append((f"time_{args.time_unit}", data["GlobalTime"]))
+        else:
+            print("  Warning: no GlobalTime branch -> time column omitted")
+
+        # Position, transformed into the detector frame.
+        cx, cy, cz = args.detector_center
+        prefix, comps = find_position_prefix(data, n)
+        if prefix is not None:
+            print(f"  Using {prefix}_{{X,Y,Z}}; subtracting detector center "
+                  f"({cx}, {cy}, {cz}) mm")
+            x = data[comps[0]].astype(float) - cx
+            y = data[comps[1]].astype(float) - cy
+            z = data[comps[2]].astype(float) - cz
+            columns.append(("x_mm", x))
+            columns.append(("y_mm", y))
+            columns.append(("z_mm", z))
+        else:
+            print("  Warning: no position branch (PostPosition/Position/"
+                  "PrePosition) -> x/y/z columns omitted")
 
     out_path = args.output
     if out_path is None:
@@ -143,6 +210,10 @@ def main():
     if n > 0:
         print(f"Energy: mean={energy.mean():.1f} keV, "
               f"min={energy.min():.1f}, max={energy.max():.1f} keV")
+        if not args.energy_only and "z_mm" in header:
+            z = arrays[header.index("z_mm")]
+            print(f"z_mm (detector frame): min={z.min():.2f}, "
+                  f"max={z.max():.2f}  (expect ~±2.5 mm, half-thickness)")
 
 
 if __name__ == "__main__":
